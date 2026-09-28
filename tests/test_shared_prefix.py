@@ -29,8 +29,10 @@ def test_parts_concatenate_to_the_full_prompt():
 def test_shared_and_flat_paths_agree_and_grouping_is_by_state():
     q = Question.choice("Which handler?", OPTIONS, name="route")
     states = list(TRUTH) * 3
-    flat = Decider(FakeBackend(content, position_bias=[2, 0, 0, 0]), shared_prefix=False)
-    shared = Decider(FakeBackend(content, position_bias=[2, 0, 0, 0]), shared_min_prefix_tokens=0)   # auto, any length
+    flat = Decider(FakeBackend(content, position_bias=[2, 0, 0, 0]), shared_prefix=False,
+                   adaptive_shifts=False)
+    shared = Decider(FakeBackend(content, position_bias=[2, 0, 0, 0]), shared_min_prefix_tokens=0,
+                     adaptive_shifts=False)   # auto, any length
     a = flat.decide_batch(states, q)
     b = shared.decide_batch(states, q)
     for x, y in zip(a, b):
@@ -45,34 +47,35 @@ def test_shared_and_flat_paths_agree_and_grouping_is_by_state():
 def test_auto_shares_only_long_prefixes():
     q = Question.choice("q", OPTIONS)
     # FakeTokenizer encodes unknown text as two tokens, so every prefix is "short"
-    short = Decider(FakeBackend(content))                            # default threshold 256
+    short = Decider(FakeBackend(content), adaptive_shifts=False)                            # default threshold 256
     short.decide("x", [q])
     assert short.stats["shared_groups"] == 0 and short.stats["flat_prompts"] == 4
-    long = Decider(FakeBackend(content), shared_min_prefix_tokens=0)
+    long = Decider(FakeBackend(content), shared_min_prefix_tokens=0, adaptive_shifts=False)
     long.decide("x", [q])
     assert long.stats["shared_groups"] == 1 and long.stats["flat_prompts"] == 0
-    forced = Decider(FakeBackend(content), shared_prefix=True)       # True ignores the threshold
+    forced = Decider(FakeBackend(content), shared_prefix=True, adaptive_shifts=False)       # True ignores the threshold
     forced.decide("x", [q])
     assert forced.stats["shared_groups"] == 1
 
 
 def test_small_groups_stay_flat_under_auto_but_share_under_true():
     two = Question.choice("q", ["a", "b"])
-    auto = Decider(FakeBackend(content), shared_min_prefix_tokens=0)
+    auto = Decider(FakeBackend(content), shared_min_prefix_tokens=0, adaptive_shifts=False)
     auto.decide("x", [two])
     assert auto.stats["shared_groups"] == 0 and auto.stats["flat_prompts"] == 2
-    forced = Decider(FakeBackend(content), shared_prefix=True)
+    forced = Decider(FakeBackend(content), shared_prefix=True, adaptive_shifts=False)
     forced.decide("x", [two])
     assert forced.stats["shared_groups"] == 1 and forced.stats["flat_prompts"] == 0
     # noul phrasings carry different label ids per phrasing, so they never group
-    n = Decider(FakeBackend(content), shared_prefix=True)
+    n = Decider(FakeBackend(content), shared_prefix=True, adaptive_shifts=False)
     n.decide("x", [Question.noul("q")])
     assert n.stats["shared_groups"] == 0 and n.stats["flat_prompts"] == 2
 
 
 def test_content_free_probes_group_too():
     q = Question.choice("q", OPTIONS)
-    d = Decider(FakeBackend(content), prior="content_free", shared_min_prefix_tokens=0)
+    d = Decider(FakeBackend(content), prior="content_free", shared_min_prefix_tokens=0,
+                adaptive_shifts=False)
     d.decide_batch(list(TRUTH), q)
     # 3 states + 3 probes = 6 groups of 4 suffixes, nothing flat
     assert d.stats["shared_groups"] == 6 and d.stats["flat_prompts"] == 0

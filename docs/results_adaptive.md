@@ -1,6 +1,12 @@
 # Adaptive cyclic shifts: what early stopping costs
 
-Opt-in: `Decider(adaptive_shifts=True, adaptive_min_shifts=2, adaptive_margin=0.1, adaptive_order="spread")`.
+**Superseded as of 2026-09-27 by [rotation_budget.md](rotation_budget.md)**, which keeps the reading order
+studied here and replaces the rest: the stopping statistic is now the log-odds margin rather than a
+probability gap, the threshold is certified against the full-K answer on unlabelled states instead of set by
+hand, and the shifts rotate a canonical listing. Both are opt-in in 0.2 and become the defaults when the tables are regenerated under them. The page below is the
+2026-09-21 study that established the reading order, and its closing observation is what led to the change.
+
+Then opt-in: `Decider(adaptive_shifts=True, adaptive_min_shifts=2, adaptive_margin=0.1, adaptive_order="spread")`.
 From `bench/results_adaptive_m0.05`, `bench/results_adaptive_m0.1`, `bench/results_adaptive_m0.2` and
 `bench/results_adaptive_spread_m0.1` (2026-09-21). The shifts are read one at a time; after each, every shift read so far is prior-corrected and the item stops
 when they all agree on the winner and the running marginal's top-1 minus top-2 probability clears the

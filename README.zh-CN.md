@@ -126,7 +126,7 @@ python -m anyjev.pipeline Qwen/Qwen2.5-7B-Instruct --labels-from banking20
 | `L1` | 每题 100–500 条标签 | 在 L0 之上做温度缩放 | 改变排序 |
 | **`L2`** | **每题 100–300 条标签** | **在中途某一层的隐状态上解一个闭式 head，每个状态一条 prompt** | **迁移到别的问题或别的模型** |
 
-每个 `Decision` 都带着自己的 `level`，`require="L1"` 能让下游代码拒绝在更弱的档位上行动。对 K 个选项的 choice，L0 要付 K 次 prefill；**L2 比一次普通前向还便宜**。
+每个 `Decision` 都带着自己的 `level`，`require="L1"` 能让下游代码拒绝在更弱的档位上行动。对 K 个选项的 choice，L0 **最多** 付 K 次 prefill，默认会更少：它一轮一轮读选项旋转，直到答案定下来，而停止门槛是在**无标签**状态上校准出来的——保证 99% 的情况下与读清整圈给出同一个决策（实测 18 轮里读 7.2 轮，vLLM 上 2.2×、transformers 上 2.3×–2.7× 的吸吐量，见 [docs/rotation_budget.zh-CN.md](docs/rotation_budget.zh-CN.md)）；**L2 比一次普通前向还便宜**。
 
 `d.observe(q, state, label)` 会在标签到达时收集它们，攒到 30 条自己解出 head，之后在 60、120 条时重解——所以第 0 天什么都没有时跑 L0，等循环喂够了 L2 自己就来了。[完整约定 →](https://github.com/nokia-applied-research/AnyJev/blob/main/docs/levels.md) · [方法 →](https://github.com/nokia-applied-research/AnyJev/blob/main/docs/method_v3.md)
 

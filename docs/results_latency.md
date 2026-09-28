@@ -44,6 +44,8 @@ shared-prefix path: 12x to 3.3x at K=20, 3.1x to 1.4x at K=4 on long states.
 ## What is left
 
 After prefix sharing the remaining L0 overhead is the K option layouts themselves; at K=20 each layout is
-about as long as a short state. Two levers on the roadmap: adaptive shifts (read 3 to 5 layouts instead of K
-when the early ones already agree; opt-in today, see `bench.adaptive_table`) and shorter layouts (labels only,
-option text in the shared prefix).
+about as long as a short state. Two levers: adaptive shifts (read a handful of layouts instead of K when the early ones already agree) are
+now available with a certified threshold (`adaptive_shifts=True`, opt-in in 0.2) — 7.2 of 18 layouts at a 1% disagreement rate with the full
+cycle, 2.2x the decisions per second on vLLM and 2.3x-2.7x on transformers ([rotation_budget.md](rotation_budget.md),
+`bench/results_layout/2026-09-27/`); shorter layouts (labels only, option text in the shared prefix) are
+still on the roadmap.

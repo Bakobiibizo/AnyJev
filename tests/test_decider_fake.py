@@ -29,7 +29,7 @@ def test_raw_is_fooled_by_position_bias_l0_is_not():
 def test_content_free_prior_removes_label_prior_exactly():
     be = FakeBackend(content, label_prior={"Yes": 2.0})
     q = Question.noul("Is this about billing?", name="bill")
-    d = Decider(be, prior="content_free")
+    d = Decider(be, prior="content_free", adaptive_shifts=False)
     raw = d.decide("nothing", [q], level="raw")["bill"]
     l0 = d.decide("nothing", [q], level="L0")["bill"]
     assert raw.p_true > 0.85
@@ -65,14 +65,14 @@ def test_score_expected_value():
 def test_probes_are_shared_across_states():
     be = FakeBackend(content, position_bias=[1, 0, 0, 0])
     q = Question.choice("Which handler?", OPTIONS)
-    d = Decider(be, prior="content_free")
+    d = Decider(be, prior="content_free", adaptive_shifts=False)
     d.decide_batch(list(TRUTH), q)
     # 3 states x 4 perms real + 4 perms x 3 probes shared = 24, not 3 x (4 + 12) = 48;
     # two forward calls: the real prompts and the probes never share a batch
     assert be.prompts_seen == 24 and be.calls == 2
     d.decide("card declined", [q])
     assert be.prompts_seen == 28                        # cf prior cached: 4 new prompts, no probes
-    d2 = Decider(FakeBackend(content))
+    d2 = Decider(FakeBackend(content), adaptive_shifts=False)
     d2.decide_batch(list(TRUTH), q)
     assert d2.backend.prompts_seen == 12                # default batch prior: no probes at all
 
@@ -89,7 +89,7 @@ def test_l1_requires_artifact_and_reports_level():
     assert art["model"] == "fake" and art["temperature"] > 0
     r = d.decide("card declined", [q], level="L1")["route"]
     assert r.level == "L1" and r.argmax == "billing"
-    d2 = Decider(FakeBackend(content))
+    d2 = Decider(FakeBackend(content), adaptive_shifts=False)
     d2.load_artifact(q, art)
     with pytest.raises(ValueError):
         d2.load_artifact(q, {**art, "model": "some-other-model"})
@@ -168,8 +168,10 @@ def test_l1_artifact_is_a_pure_function_of_the_calibration_set():
     q = Question.choice("Which handler?", OPTIONS, name="route")
     calib = list(TRUTH) * 20
     labels = [OPTIONS.index(TRUTH[s]) for s in calib]
-    fresh = Decider(FakeBackend(content, temperature=0.3, position_bias=[1.0, 0, 0, 0]))
-    busy = Decider(FakeBackend(content, temperature=0.3, position_bias=[1.0, 0, 0, 0]))
+    fresh = Decider(FakeBackend(content, temperature=0.3, position_bias=[1.0, 0, 0, 0]),
+                    adaptive_shifts=False)
+    busy = Decider(FakeBackend(content, temperature=0.3, position_bias=[1.0, 0, 0, 0]),
+                   adaptive_shifts=False)
     busy.decide_batch(["unrelated ticket"] * 40 + ["app crashes"] * 25, q)      # history before calibrate
     a = fresh.calibrate(q, calib, labels)
     b = busy.calibrate(q, calib, labels)
@@ -213,8 +215,9 @@ def test_content_free_probes_never_share_a_forward_call_with_real_states():
         dec._score = _score
         return calls
 
-    plain = Decider(FakeBackend(content), prior="batch")
-    diag = Decider(FakeBackend(content), prior="batch", record_content_free=True)
+    plain = Decider(FakeBackend(content), prior="batch", adaptive_shifts=False)
+    diag = Decider(FakeBackend(content), prior="batch", record_content_free=True,
+                   adaptive_shifts=False)
     calls_plain, calls_diag = spy(plain), spy(diag)
     a = plain.decide_batch(states, q, level="L0")
     b = diag.decide_batch(states, q, level="L0")
@@ -287,7 +290,7 @@ def test_l2_artifacts_round_trip_and_refuse_other_layouts():
     assert art["layer_abs"] == 4
     saved = d.export_artifacts()
     assert list(saved["heads"]) == [q.key] and saved["artifacts"] == {}
-    d2 = Decider(FakeBackend(content))
+    d2 = Decider(FakeBackend(content), adaptive_shifts=False)
     assert d2.load_artifacts(saved) == 1
     p1 = np.stack([x.probs for x in d.decide_batch(states[48:], q, level="L2")])
     p2 = np.stack([x.probs for x in d2.decide_batch(states[48:], q, level="L2")])
@@ -446,3 +449,18 @@ def test_adaptation_statistics_and_observations_survive_export_and_load():
     assert after[0].diagnostics["adapted"] and after[0].diagnostics["adapt_n"] == 24
     assert np.allclose(np.stack([x.probs for x in after]), np.stack([x.probs for x in before]), atol=1e-6)
     assert d2.observations(reworded)[1] == labels[:5]
+
+
+def test_an_unknown_calibrator_method_raises_instead_of_being_read_as_a_temperature():
+    """Before 0.2.0 the dispatch fell through: an artifact with any method other than `head:` reached
+    `TemperatureScaler.from_dict` and died on a missing key. A registry makes adding an L1 calibrator
+    one line and makes a typo an error."""
+    from anyjev.decider import CALIBRATORS
+
+    q = Question.choice("Which handler?", OPTIONS, name="route")
+    d = Decider(FakeBackend(content))
+    with pytest.raises(ValueError, match="no loader"):
+        d.load_artifact(q, {"method": "binning", "bins": [0.1, 0.9]})
+    assert "temperature" in CALIBRATORS
+    d.load_artifact(q, {"method": "temperature", "temperature": 2.0})   # and the known one still loads
+    assert d.decide("card declined", [q], level="L1")["route"].level == "L1"

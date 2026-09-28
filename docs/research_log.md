@@ -589,3 +589,467 @@ beat soft ones for the 1.7B and lose for the 8B; the difference is small either 
 alone and not by the 1.7B (-3.5 after distillation). The honest product line: the 32B's Jev
 mode distils into a 1.7B at 0.76 for the cost of 300 labels, 1200 generated states and a
 closed-form solve; nothing in the pipeline takes a gradient (the generator only samples).
+
+## Entries 15 to 19
+
+Entries 15 to 19 (the agent supervisor, the head bank, the tuned lens, JevBench, L2 on vLLM) record work
+whose code and result JSON are not in this tree yet, so they are not reproduced here: `AGENTS.md` rule 1
+asks that an entry name the JSON it came from. They will land with the features they describe. Nothing
+in the entries below depends on them.
+
+## 20. E20, KV reuse for a decision readout, and where the state should sit (2026-09-26)
+
+Two questions, one apparatus. **(a)** A Jev prompt is `[P: system + "State:"][S: the state][Q: question
++ options + "Answer with the letter only." + assistant header]`. `P` is a true prefix and every engine
+caches it; `Q` is byte-identical on every request to the same endpoint but sits *after* the state, so no
+prefix cache can ever reuse it — and on a short state `Q` is most of the prompt (measured with the real
+Qwen2.5 tokenizer and the real 18-skill routing question: 159 tokens fixed, of which only 42 are the
+cross-request prefix; a MASSIVE utterance is 7 tokens at the median, so 96% of the prompt is fixed).
+Can `Q`'s KV be reused across requests, PATCH-style, with re-RoPE and a healing window? **(b)** If not,
+does moving the state fix it for free?
+
+Scripts (run outside this tree): `template_kv.py`, `where.py`, `recompute_curve.py`,
+`layout_l0.py`. Result JSON committed under `bench/results_layout/2026-09-26/`.
+
+**The splice is exact, so the negative result below is not a bug.** RoPE is a rotation and rotations
+compose, so a cached K for a token that sat at position p is moved to p+d by rotating it by d. Verified
+on real cached K over all 28 layers: max abs 7.0e-05, relative 2.2e-06 in fp32 (Qwen2.5-7B), against
+1.6e+01 for the same reuse with no re-RoPE; V needs nothing. Healing the whole block reproduces a plain
+forward to 1.6e-06 (7B) and 5.7e-06 (0.6B), i.e. the machinery is transparent when it is asked to be.
+
+**(a) The answer is no, and the way it fails is specific: reuse transports the previous decision.**
+With the template taken from a previous request (the cheapest source, and what a cache would naturally
+hold), the spliced decision equals *that request's* answer on 100% of items, and agrees with the true
+full-forward decision 3.0% of the time (chance on K=18 is 5.6%). Qwen2.5-7B, banking20, n=100. Taking
+the template from an empty state, or encoding `Q` in isolation after `P` (PromptCache / Block-Attention
+style), removes the bias but not the damage: agreement 0.06 and 0.03. A second implementation, written
+independently, reproduced the same transport effect (3/3 state pairs flipped to the reference's label).
+
+**The field's healing constant does not transfer to a decision.** Every paper in the non-prefix reuse
+line converges on the same rule of thumb — recompute the most deviant 10-20% of the reused span and
+quality is preserved (CacheBlend "<15%", CacheTune top-15%, Affix Cache ~20%) — and every one of them
+validated it against generated text (F1, ROUGE, NLL). Scored instead on the decision and its
+probability, on the same x-axis those papers use (`recompute_curve.py`, massive_route, n=100, fp32):
+
+| recompute | Qwen2.5-7B agree / ECE | Qwen3-8B agree / ECE |
+|---|---|---|
+| 0% | 0.110 / 0.970 | 0.090 / 0.967 |
+| 15% (the rule) | 0.110 / 0.970 | 0.090 / 0.957 |
+| 30% | 0.120 / 0.953 | 0.150 / 0.867 |
+| 50% | 0.420 / 0.592 | 0.380 / 0.693 |
+| 75% | 0.800 / 0.405 | 0.730 / 0.447 |
+| 100% | 1.000 / 0.307 | 1.000 / 0.316 |
+
+Gold ECE is 0.307 and 0.316. The curve is **flat from 0% to 20%** — the field's budget buys nothing at
+all — and the decision only returns as the recompute fraction approaches one. Reuse error that is
+invisible in generated-text quality moves a thresholded probability from ECE 0.31 to 0.97. The coverage
+was never the problem: a content-addressed cache can reach 96% reuse on this workload against prefix
+caching's 19.6%. What cannot be reused is the part that decides.
+
+**Why, mechanically.** The state-dependent work that produces the answer lives in the option-line tokens
+that sit after the state, not in the readout position. Their keys and values encode which option matches
+*this* state. Transplanting them transplants the answer.
+
+**(b) Moving the state is nearly free and sometimes much better, but it is a per-(model, question)
+choice, not a convention.** Three layouts, scored at L0 (cyclic-shift marginalisation over all K shifts,
+thinking disabled), paired bootstrap over items, `layout_l0.py`:
+
+| layout | what a prefix cache keeps | tokens per request |
+|---|---|---|
+| `state-first` (today) | `P` only | `\|S\| + K(\|Q\|+\|O\|)` |
+| `question-first` `[P][Q][O][S]` | the whole fixed block, forever | `K(\|S\|+1)` |
+| `middle-state` `[P][Q][S][O]` | `[P][Q]`, and `S` is shared by the K shifts | `\|S\| + K\|O\|` |
+
+L0 accuracy minus `state-first`, 95% CI over items (n=150-300 per cell):
+
+| model | task | question-first | middle-state |
+|---|---|---|---|
+| Qwen2.5-7B | massive_route | **+0.079** [+0.025,+0.135] | +0.025 |
+| Qwen3-8B | massive_route | -0.016 | +0.014 |
+| Qwen3-1.7B | massive_route | **-0.147** [-0.220,-0.070] | +0.041 |
+| Llama-3.1-8B | massive_route | +0.056 | +0.045 |
+| Mistral-7B | massive_route | -0.056 | +0.021 |
+| Qwen2.5-7B | banking20 | +0.020 | **+0.045** [+0.015,+0.080] |
+| Qwen2.5-7B | clinc_escalate | -0.020 | **+0.102** [+0.043,+0.160] |
+| Qwen3-8B | clinc_escalate | **+0.394** [+0.323,+0.460] | **+0.378** |
+| Qwen2.5-7B | newsgroups | **-0.228** [-0.300,-0.160] | -0.033 |
+| Llama-3.1-8B | newsgroups | **-0.154** [-0.227,-0.073] | +0.006 |
+
+`question-first` is the big saving (5-10.4x fewer tokens on short states, because the whole fixed block
+becomes a prefix cached once for every request the endpoint ever serves) but it is **not reliably free**:
+better on two cells, worse on three, inconclusive on five, and it loses badly on long states, where it
+also costs more because the state is re-encoded once per shift. `middle-state` is the safe one — at or
+above `state-first` on nine of ten cells — but saves only 1.1-1.2x on `choice` tasks, where the option
+lines dominate and are still recomputed per shift. The token crossover, from span lengths alone, is at a
+state of about 90 tokens for K=18.
+
+So the deliverable is not a convention but a **selection**: the layout is chosen per (model, question)
+from the calibration set that L1/L2 already require, and the payoff ranges 1.1x to 10.4x. What it is
+*not* is a reason to build a KV-reuse mechanism, because the mechanism does not work here at any budget
+the mechanism is worth.
+
+**Closed.** Non-prefix KV reuse of the fixed question block, in any of the three template constructions,
+at any healing fraction below ~1. Kept as a measured boundary for the PATCH line rather than a failure:
+the coverage is real, the mechanism is exact, and the decision still does not survive.
+
+**Mistakes made on the way, all mine, all in the harness rather than the method.** `banking20`'s items
+are ordered by class, so an unshuffled slice made a broken splice look 100% accurate; Qwen3 was left in
+thinking mode, which puts the answer somewhere else and made order-flip 1.000 across whole rows; and the
+`noul` label ids were read in canonical order under every permutation instead of through
+`readout.label_ids_for_perm`, which inverted Yes/No and put a binary task below chance. That last one is
+the third time this project has shipped that inversion.
+
+## 21. E21, candidates as a set: the mask that would have saved K forwards (2026-09-26)
+
+A K-way choice runs K forwards only because the options are written one after another: option 5
+attends to options 1-4, option 1 to none of them, and each sits at a different position. L0 pays K
+passes to average away an asymmetry the layout introduced. So: change the mask instead. Let every
+option span attend to `[system][state][question]` and to itself only, give every span the same
+starting position id, and the K candidates become exchangeable by construction -- one forward, and no
+order left to be biased by. `bench/layout/setattn.py`.
+
+**The mechanism does what it claims.** Hand-built causal mask against a plain forward: max |dp|
+0.00e+00, so the plumbing is transparent. Holding the letter-option pairing fixed and shuffling only
+the order the spans are written in: **3.70e-06 under the set mask against 2.24e-03 under the causal
+one**. The candidates really are a set.
+
+**And the model cannot use it.** Qwen2.5-7B, massive_route, n=120, fp32:
+
+| readout | forwards | accuracy | ECE |
+|---|---|---|---|
+| causal, K passes (L0 today) | 18 | 0.633 | 0.316 |
+| causal, 1 pass (raw) | 1 | 0.625 | 0.322 |
+| options blinded to each other, normal positions | 1 | **0.092** | 0.507 |
+| options blinded to each other, normal positions | 4 | 0.183 | 0.198 |
+| blinded + shared positions (the full mechanism) | 1 | 0.042 | 0.410 |
+| blinded + shared positions | 4 | 0.075 | 0.147 |
+
+Chance is 0.056. Qwen3-8B on the same task: 0.033 at one pass against 0.620 for L0.
+
+The diagnostic that matters is the third row. **Blinding alone already destroys the decision, before
+any position is touched** -- so this is not an encoding detail that a gentler scheme could fix. The
+model compares the candidates *among the option tokens*, not at the readout position. Sharing
+positions costs a little more on top, but the damage is done by the blinding.
+
+**This closes the second mechanism of the day for the same underlying reason as the first.** Entry 20
+found that reusing the option block's KV across requests transports the previous request's answer;
+this one finds that stopping the options from seeing each other removes the answer altogether. Both
+say the same thing: the state-dependent comparison that produces a typed decision is computed in the
+option tokens, by them attending to the state and to one another. Any mechanism that reuses those
+tokens, isolates them, or reorders them without recomputing them is reusing, isolating or reordering
+the decision itself. That is a property of the readout, not of an implementation, and it rules out
+the whole family: set/parallel encoding of candidates, cross-request template caching, and
+non-prefix KV reuse of anything after the state.
+
+What is left standing from the two entries is the cheap thing: the layout choice of entry 20, which
+buys 1.1x to 10.4x with no new mechanism and no quality loss when it is selected per (model,
+question) on the calibration set.
+
+## 22. E22, packing the K rotations into one forward (2026-09-27)
+
+Entry 21 tried to make the K rotations unnecessary and failed, because blinding the options to each
+other destroys the decision. The fallback is to keep all K rotations and make them cheaper to run:
+lay the K option blocks end to end in **one** sequence, give every block the same starting position id
+(each is a continuation of the same prefix), and mask so a block sees the prefix and itself and no
+other block. Every block then sees exactly the tokens, at exactly the positions, it would have seen as
+a sequence of its own, so this is a pure systems change and the readout must come out unchanged.
+`bench/layout/packed.py`, `bench/layout/throughput.py`.
+
+**It is exact.** Packed against K independent full prefills, per-option probabilities: max |dp|
+2.17e-05, and the L0 answer is identical. The shared-prefix baseline (what `HFBackend.score_shared`
+and an engine prefix cache do) agrees with both.
+
+**And it wins almost nothing over what already ships.** One decision, Qwen2.5-7B, massive_route, K=18,
+branch tokens 1674, `bench/results_layout/2026-09-26/packed_len*.json`:
+
+| state tokens | prefix | K independent prefills | shared prefix, K sequences | packed, one forward |
+|---|---|---|---|---|
+| 10 | 76 | 516.7 ms | 104.0 ms | **87.0 ms** (1.20x) |
+| 200 | 273 | 591.7 ms | 112.9 ms | 101.3 ms (1.11x) |
+| 600 | 669 | 725.8 ms | 131.4 ms | 124.7 ms (1.05x) |
+| 1500 | 1571 | 1354.4 ms | 190.5 ms | 185.7 ms (1.03x) |
+| 3000 | 3067 | 2641.3 ms | 296.4 ms | 301.0 ms (0.98x) |
+
+5.9x over no sharing at all, and 0.98x-1.20x over the sharing that is already there. I had predicted
+the advantage would grow with the prefix, because the baseline replicates the prefix KV K times. It
+shrinks: the replication costs memory, not arithmetic.
+
+**Throughput does not move either.** Concurrency swept at a 600-token state (packed sequence 2343
+tokens), `bench/results_layout/2026-09-26/tput_600.json`:
+
+| decisions in flight | shared ms | shared GiB | shared dec/s | packed ms | packed GiB | packed dec/s |
+|---|---|---|---|---|---|---|
+| 1 | 127.8 | 15.71 | 7.8 | 121.6 | 15.08 | 8.2 |
+| 2 | 233.1 | 17.17 | 8.6 | 234.9 | 15.88 | 8.5 |
+| 4 | 452.0 | 20.04 | 8.8 | 452.9 | 17.49 | 8.8 |
+| 8 | 885.5 | 25.82 | 9.0 | 916.9 | 20.70 | 8.7 |
+| 16 | 1799.8 | 37.36 | 8.9 | 1876.1 | 27.14 | 8.5 |
+
+Decisions per second is flat at about 9 on both paths from M=2 onward. The memory saving is real and
+linear -- 10.2 GiB at M=16, because the prefix KV is held once per decision instead of K times -- so
+packing raises the concurrency ceiling on a memory-bound deployment and nothing else.
+
+**Why, in one line: the redundancy is in the feed-forward blocks, not in attention.** 2 x 7.6e9 x 2343
+= 35.6 TFLOP in 121.6 ms is 293 TFLOPS, about 35% MFU of an H100 NVL's 835 TFLOPS bf16 dense. The card
+is already saturated doing matrix multiplies on the option tokens, and at these lengths attention is
+2-7% of the prefill. Sharing a prefix, packing a batch, or masking differently all move attention-side
+and memory-side costs; none of them removes a single token from the feed-forward stack.
+
+So the only lever that can matter is **reading fewer rotations**, which is entry 23.
+
+## 23. E23, what the K rotations actually buy, and buying it for a quarter of the price (2026-09-27)
+
+Three entries in a row said the same thing: the decision is computed in the option tokens, and the
+option tokens' feed-forward work is the bill. Entry 23 therefore stops trying to make a rotation
+cheaper and asks how many rotations are needed. `bench/layout/position_prior.py` records the label
+log-probs of **every** rotation of every item in one GPU pass and then replays any readout rule on
+that tensor in numpy, so the expensive part is paid once; `bench/layout/serve_cost.py` converts a
+saved rotation into saved milliseconds. Four cells, 900 items each (300 calibration, 600 test),
+`bench/results_layout/2026-09-27/pp_*.json` and `sc_*.json`.
+
+### What the full cycle buys
+
+`docs/levels.md` states the product exactly: under an additive position bias the full cycle removes it
+and "the result no longer depends on how you listed the options". That is an invariance guarantee, and
+it is worth asking what it costs in accuracy terms. Accuracy of every single fixed rotation, against
+the full-K average:
+
+| model | task | K | single rotation: min / mean / max (sd) | full cycle | above |
+|---|---|---|---|---|---|
+| Qwen2.5-7B | massive_route | 18 | 0.575 / 0.646 / 0.692 (0.036) | 0.668 | 67% of rotations |
+| Qwen3-8B | massive_route | 18 | 0.703 / 0.734 / 0.770 (0.018) | 0.747 | 78% |
+| Qwen2.5-7B | newsgroups | 20 | 0.672 / 0.693 / 0.718 (0.012) | 0.707 | 90% |
+| Qwen3-8B | newsgroups | 20 | 0.653 / 0.691 / 0.712 (0.015) | 0.708 | 95% |
+
+The full cycle is worth **+1.4 to +2.2 points over an average single rotation and +3.9 to +9.3 against
+the worst one**, and it is at or below the best single rotation on every cell. So K forwards buy
+insurance against a bad arrangement plus the invariance guarantee -- not headroom. Nothing above the
+best arrangement is being bought, which means the question is how cheaply the insurance can be had.
+
+The position bias itself is large and extremely stable. Spread across positions is 3.90 to 6.81 log
+units -- on Qwen3-8B/massive_route position 0 carries 911x the prior weight of position 6 -- and
+`corr(calibration b, held-out b)` is 0.998 to 1.000 with max difference 0.18 log units. It is a
+property of the (model, question), exactly as hoped.
+
+### Estimating the bias once does not replace the cycle
+
+If the bias is additive and item-independent, subtracting a b estimated once on unlabelled states
+should let one forward do the cycle's work. It does not, and the reason is visible in the numbers:
+
+| readout | forwards | Q2.5/massive | Q3/massive |
+|---|---|---|---|
+| one rotation, as listed | 1 | 0.667 (-0.002) | 0.730 (-0.017) |
+| one rotation + position prior | 1 | 0.683 (+0.015) | 0.722 (-0.025) |
+| one rotation + batch prior | 1 | 0.707 (+0.038) | 0.733 (-0.013) |
+| full cycle (reference) | 18 | 0.668 | 0.747 |
+
+The position prior helps on one model and hurts on the other, and its agreement with the full-cycle
+answer stays at 0.875-0.895 either way. Subtracting a constant vector cannot remove an interaction
+between the option's content and its position, and that residual is what is left. The row that does
+move is the **batch prior** -- the label-prior correction AnyJev already ships -- estimated from one
+rotation instead of K: +0.038 on Qwen2.5/massive_route, which is more than all 18 rotations buy. That
+is a cheaper estimator for something already in the product, not a replacement for the cycle.
+
+### `max_permutations` truncates to the wrong rotations
+
+`anyjev/calibrate/permute.py` already contains `spread_order` -- "consecutive shifts move every option
+by one position, so the first few are nearly the same layout" -- and `cyclic_shifts`, which is what
+`Decider` calls, **does not use it**: `max_permutations=4` reads rotations 0,1,2,3. Same budget, both
+orders, agreement with the full-cycle answer and flip rate under a different rotation set:
+
+| cell | 4 adjacent: agree / flip | 4 spread: agree / flip |
+|---|---|---|
+| Qwen3-8B / massive_route | 0.932 / 0.102 | **0.970 / 0.047** |
+| Qwen2.5-7B / newsgroups | 0.920 / 0.083 | **0.963 / 0.058** |
+| Qwen3-8B / newsgroups | 0.925 / 0.070 | **0.973 / 0.052** |
+
+On Qwen2.5-7B/newsgroups the current order also *loses accuracy*: 4 adjacent rotations score 0.678
+against the cycle's 0.707, paired CI [-0.047, -0.012], while 4 spread rotations score 0.707, CI
+[-0.013, +0.015]. Wiring `spread_order` into the truncation path is a few lines and strictly better at
+every budget.
+
+### Spending the budget per item: a stopping rule with a label-free certificate
+
+Read rotations in spread order, keep the running log-mean, and stop when the gap between the top two
+options clears one threshold. Because the target is **agreement with the full-K answer** rather than
+accuracy, the threshold can be calibrated on unlabelled states -- the guarantee costs no labels. One
+scalar knob, calibrated on the 300-item calibration split, measured on the 600-item test split:
+
+| cell | target disagreement | tau | mean rotations | vs K | agreement achieved | accuracy (cycle) |
+|---|---|---|---|---|---|---|
+| Q2.5 / massive_route | 1% | 5.06 | 4.96 | 3.6x | 0.985 | 0.673 (0.668) |
+| Q3 / massive_route | 1% | 9.50 | 4.12 | 4.4x | 0.987 | 0.743 (0.747) |
+| Q2.5 / newsgroups | 1% | 6.52 | 5.37 | 3.7x | 0.997 | 0.708 (0.707) |
+| Q3 / newsgroups | 1% | 7.91 | 3.53 | 5.7x | 0.992 | 0.710 (0.708) |
+| Q2.5 / massive_route | 5% | 2.78 | 2.48 | 7.3x | 0.947 | 0.670 |
+| Q3 / newsgroups | 5% | 3.11 | 1.48 | 13.5x | 0.962 | 0.702 |
+
+The certificate holds on test in all four cells, and accuracy tracks the cycle to within a point in
+both directions. Adaptivity earns its keep at the tight end: at the 1% target, spending the **same
+mean budget uniformly on every item** reaches only 0.942-0.973 agreement against the rule's
+0.985-0.997. At a 10% target the two are the same, which is the expected shape -- per-item spending
+matters when most items are easy and a few are not.
+
+### Rotations converted into milliseconds
+
+A saved rotation is not a saved forward's worth of time, because the K rotations share the
+`[state][question]` prefix: a decision computes `P + R*B` tokens, so cutting R from K to 4 buys K/4
+only when the prefix is negligible. Measured, 8 decisions in flight, Qwen2.5-7B / massive_route
+(K=18, option block 93 tokens), `bench/results_layout/2026-09-27/sc_q25_massive.json`:
+
+| state tokens | prefix | full K | R=1 | R=2 | R=4 | arithmetic ceiling at R=4 |
+|---|---|---|---|---|---|---|
+| 10 | 76 | 609.3 ms | 8.08x | 6.05x | **3.73x** | 3.91x |
+| 200 | 273 | 699.0 ms | 5.13x | 4.29x | 3.00x | 3.02x |
+| 600 | 669 | 883.3 ms | 3.35x | 2.95x | 2.38x | 2.25x |
+| 1500 | 1571 | 1382.5 ms | 2.38x | 2.21x | 1.93x | 1.67x |
+
+Qwen3-8B/massive_route and Qwen2.5-7B/newsgroups behave the same at R=4: 3.60x and 3.72x at their own
+natural state lengths (10 and 112 tokens), 2.44x and 2.64x once the state is padded to 600
+(`sc_q3_massive.json`, `sc_q25_news.json`). The measured speedups sit on the arithmetic ceiling, which
+is the confirmation that rotations are the right unit to count.
+
+### Reading
+
+**The deliverable of line 2 for choice questions is a rotation budget, not a new kernel.** A
+sequential rule with one label-free threshold returns the decision full L0 would have returned on 99%
+of items for about a quarter of the rotations, which is **1.9x to 3.7x of real wall-clock depending on
+how long the state is**, and the user sets the target. It composes with two free fixes: use
+`spread_order` when truncating, and estimate the batch prior from one rotation. Nothing here changes
+the model, needs a label, or touches the readout's meaning.
+
+The honest ceiling: the saving is bounded by `(P + K*B) / (P + R*B)`, so a long agentic context eats
+it. Shrinking `B` rather than `R` -- re-asking only the options still in contention after two
+rotations, which turns the second stage's block from K lines into three -- is the next mechanism to
+test, and unlike everything in entries 20-22 it has not been ruled out by the finding that the
+decision lives in the option tokens: a shortlist still shows the surviving options to each other.
+
+## 24. E24, the rotation budget gets a certificate, a statistic, and a canonical listing (2026-09-27)
+
+Entry 23 established that the K cyclic shifts buy insurance and an invariance guarantee rather than
+accuracy, and that a sequential rule can keep both for about a quarter of the shifts. Turning that into
+a default meant answering three questions the study had left open, and the answers changed the design.
+`anyjev/calibrate/stopping.py`, `bench/layout/margin_default.py`, `bench/layout/engine_cost.py`,
+`docs/rotation_budget.md`.
+
+The adaptive path was not new: `Decider(adaptive_shifts=True)` and `spread_order` have been in the tree
+since 0.1.0, measured at 2.6x-3x in `docs/results_adaptive.md`, which already noted that "margins of
+0.05, 0.1 and 0.2 gave identical results ... stopping is decided by winner agreement alone". That
+observation turned out to be the thread to pull.
+
+### The knob was dead, and not because it was set badly
+
+Replaying the shipped rule over every rotation of every item on four cells, sweeping its margin
+(`bench/results_layout/2026-09-27/margin_default.json`): from 0.00 to 0.80 the mean shifts and the
+disagreement with the full-K answer barely move. The unanimity condition dominates, and a probability
+gap saturates at 1 -- once the marginal is peaked it carries no information, which is exactly the
+regime where the rule has to decide. The **log-odds margin**, the same gap in log space, is unbounded.
+
+With one global threshold at a 1% disagreement target the two look similar (worst-cell mean shifts 7.70
+against 7.18). Under the procedure that actually ships -- a threshold calibrated per (model, question)
+and accepted only when a Clopper-Pearson 95% upper bound clears the target -- they do not:
+
+| stopping rule | worst mean shifts | cells certified |
+|---|---|---|
+| probability gap + unanimity (shipped) | 7.89 | **2 of 4** |
+| probability gap alone | 6.05 | **2 of 4** |
+| log-odds margin + unanimity | 7.96 | 4 of 4 |
+| **log-odds margin alone** | **6.12** | **4 of 4** |
+
+On two cells no probability-gap threshold can certify 1% at all. Unanimity costs about 1.8 shifts and
+certifies nothing extra. So: log-odds margin, no unanimity.
+
+### The certificate, not the point estimate
+
+A threshold picked on the calibration split's observed disagreement rate does not hold out. At a 1%
+target, 300 states allow three disagreements, and fitting to exactly three overfits: held-out
+disagreement came in at 0.013-0.025 against the 1% target. Requiring `cp_upper(k, n) <= target`
+instead -- the largest rate consistent with k failures in n draws at 95% confidence -- brought held-out
+disagreement to 0.000-0.008 on the same four cells, at 4.75-6.12 mean shifts (2.9x-4.2x):
+
+| cell | K | threshold | mean shifts | vs K | held-out disagreement | accuracy (full cycle) |
+|---|---|---|---|---|---|---|
+| Qwen2.5-7B / massive_route | 18 | 4.50 | 6.12 | 2.9x | 0.008 | 0.663 (0.668) |
+| Qwen2.5-7B / newsgroups | 20 | 6.00 | 6.00 | 3.3x | 0.000 | 0.707 (0.707) |
+| Qwen3-8B / massive_route | 18 | 9.50 | 5.37 | 3.4x | 0.000 | 0.747 (0.747) |
+| Qwen3-8B / newsgroups | 20 | 8.25 | 4.75 | 4.2x | 0.003 | 0.710 (0.708) |
+
+The bound also says honestly when a calibration set is too small: with zero observed disagreements, 24
+states only bound the rate at 12%, because the floor is `1 - delta**(1/n)`. `calibrate_adaptive` then
+returns no threshold and every shift is read, which is the safe direction. For an uncalibrated default,
+the smallest global threshold certifying 1% on all four cells at once is **8.5**, worth 1.9x-3.9x
+(`DEFAULT_LOG_MARGIN`).
+
+### What made it safe to be the default: rotate a canonical listing
+
+Flipping the default broke one existing test, and it was the right test to break.
+`test_2048_demo_l0_removes_the_position_bias` asserts that L0's answer does not change when the options
+are re-listed. Stopping early breaks that, because the shifts are applied to *the caller's* listing: a
+different listing puts different options at the positions the truncated shift set happens to cover.
+
+The fix is to rotate a listing ordered by the option text instead, so the prompts are a function of the
+option **set**. Then any two listings of the same options produce identical prompts and identical
+probabilities, at **any** shift budget -- which is a stronger guarantee than reading every shift used to
+give, because a full cycle equalises positions but not which options sit next to each other, and the
+options attend to one another (entry 21). `Decider(canonical_order=True)` (opt-in in 0.2, default once the shipped tables are regenerated); the 2048 test
+passes unchanged, and `tests/test_stopping.py` pins both directions (exact equality with it, measurable
+inequality without it at a partial budget).
+
+### On a real engine, the number of rounds costs as much as the number of shifts
+
+`bench/layout/serve_cost.py` prices a shift as a chunk of one local forward. A served deployment pays
+differently: each shift is a request, and the rule reads them in rounds, each a barrier the whole batch
+waits behind. `adaptive_wave` asks for w shifts per round. Qwen2.5-7B, massive_route, 300 test states,
+threshold certified at a 1% target on 600 unlabelled states (10800 requests, 49 s, one time, no labels),
+one H100 NVL, the two runs serial on an otherwise idle host. `bench/layout/engine_cost.py`,
+`bench/results_layout/2026-09-27/{vllm,hf}_q25_massive.json`:
+
+**vLLM 0.7.0, prefix caching on**
+
+| readout | requests / decision | seconds | decisions/s | vs reference | agreement | accuracy |
+|---|---|---|---|---|---|---|
+| L0, all 18 shifts | 18.00 | 17.9 | 16.73 | 1.00x | 1.000 | 0.697 |
+| L0, adaptive, wave 1 | 7.16 | 13.6 | 22.12 | 1.32x | 0.987 | 0.703 |
+| **L0, adaptive, wave 2** | 7.28 | 8.1 | **37.20** | **2.22x** | 0.987 | 0.703 |
+| L0, adaptive, wave 4 | 9.25 | 9.4 | 31.84 | 1.90x | 0.987 | 0.703 |
+| L0, adaptive, wave 6 | 10.86 | 10.3 | 29.17 | 1.74x | 0.987 | 0.700 |
+| L1, adaptive, wave 2 | 7.26 | 9.2 | 32.53 | 1.94x | 0.987 | 0.697 |
+
+**local transformers, same GPU**
+
+| readout | requests / decision | seconds | decisions/s | vs reference | agreement | accuracy |
+|---|---|---|---|---|---|---|
+| L0, all 18 shifts | 18.00 | 42.6 | 7.04 | 1.00x | 1.000 | 0.697 |
+| **L0, adaptive, wave 1** | 7.24 | 18.2 | 16.47 | **2.34x** | 0.987 | 0.703 |
+| **L0, adaptive, wave 2** | 7.43 | 18.2 | 16.46 | **2.34x** | 0.987 | 0.703 |
+| L0, adaptive, wave 4 | 9.23 | 22.8 | 13.15 | 1.87x | 0.987 | 0.703 |
+| L0, adaptive, wave 6 | 10.82 | 26.2 | 11.43 | 1.62x | 0.990 | 0.700 |
+| L1, adaptive, wave 1 | 7.15 | 18.4 | 16.30 | 2.32x | 0.990 | 0.700 |
+
+The two engines disagree about the wave, and the reason is visible in the columns. On vLLM, waves of 1
+and 2 issue the same number of requests (7.16 against 7.28) and differ by **1.7x in wall clock**: the
+work is identical and only the round count changed. Locally there are no round trips, so 1 and 2 tie
+and the only thing that matters is reading fewer shifts. Past 2 both lose, because the extra shifts a
+wide wave reads cost more than the rounds it saves. Hence the default of 2: best remotely, tied-best
+locally.
+
+Accuracy did not move on either engine (0.703 against the cycle's 0.697), and agreement was 0.987 --
+slightly outside the 1% target, which is what a 95% confidence bound permits and worth stating as such
+rather than rounding to "1%". The offline study reached 0.000-0.008 on four cells with permutation only;
+the live path also carries the batch prior and the canonical listing, and lands a little higher.
+
+**What this does not do is close the gap to L2.** L2 reads one prompt per state through a forward that
+stops at about two thirds of the depth -- 0.68x of one plain batched forward on Qwen3-8B
+(`bench/results_exit/2026-09-22/Qwen__Qwen3-8B.latency.json`) -- so at 7.2 shifts per decision the
+rotation budget is still an order of magnitude more forward work than a head. The rotation work makes
+the label-free level affordable; it does not make it competitive with a head. That is an argument for
+the training-based line, not against this one.
+
+### Reading
+
+The rotation budget now has a number attached to it: the decision full L0 would have
+made, about 99% of the time, for 2.2x-2.3x the decisions per second on either engine, one knob
+(`adaptive_target`), no labels, no model change. The parts that make it defensible are the ones that
+were missing rather than the idea: a statistic that does not saturate, a bound instead of a point
+estimate, a canonical listing so that stopping early does not quietly cost the guarantee L0 is
+documented to give, and a wave width measured on both engines rather than assumed.

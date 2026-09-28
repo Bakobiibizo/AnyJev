@@ -63,8 +63,27 @@ For `noul`, the two phrasings "Answer Yes or No" and "Answer No or Yes" are
 both read and combined. For `score`, the bins are ordinal and are never
 permuted; only the prior correction applies.
 
-Cost: K prompts per choice question (2 for noul, 1 for score), all sharing the
-state prefix. `max_permutations` caps K.
+The shifts can rotate a **canonical** listing of the options, ordered by their text
+(`canonical_order=True`; opt-in in 0.2). Reading every shift gives every option
+every position either way, but which options sit next to each other still follows
+the caller's order and the options attend to one another, so without this the
+decision can depend on how the list was typed. With it the prompts are a function
+of the option *set*: the same options listed any other way return identical
+probabilities, at any shift budget.
+
+Cost: at most K prompts per choice question (2 for noul, 1 for score), all sharing
+the state prefix. `max_permutations` caps K. With the rotation budget on, not all K are read:
+`adaptive_shifts=True` reads them in `spread_order`, two per round
+(`adaptive_wave`), and stops when the running marginal's log-odds margin clears a
+threshold. The threshold is not a taste setting -- `Decider.calibrate_adaptive(q,
+states, target=0.01)` reads every shift of a batch of **unlabelled** states once
+and returns the cheapest threshold whose disagreement with the full-K answer is
+under `target` by a Clopper-Pearson upper bound, so the guarantee is "the decision
+the full cycle would have made, 1 - target of the time" and it costs no labels.
+Until a question is calibrated the threshold is `DEFAULT_LOG_MARGIN`. Measured:
+7.2 shifts of 18 at a certified 1% target on Qwen2.5-7B / massive_route, 2.2x on vLLM and 2.3x-2.7x
+on transformers
+([rotation_budget.md](rotation_budget.md)). `adaptive_shifts=False` reads every shift.
 
 What L0 does not do: it does not make the model's own uncertainty
 calibrated. A model that is overconfident on everything is still overconfident

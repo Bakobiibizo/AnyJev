@@ -22,6 +22,7 @@ from anyjev.calibrate.contextual import (
 )
 from anyjev.calibrate.permute import cyclic_shifts, flip_rate_across_perms, marginalize, spread_order
 from anyjev.calibrate.posthoc import TemperatureScaler
+from anyjev.calibrate.stopping import DEFAULT_LOG_MARGIN, choose_threshold, log_margin
 from anyjev.heads import LinearHead, decode_array, encode_array
 from anyjev.heads import fit_head as _fit_head
 from anyjev.question import Question
@@ -40,6 +41,15 @@ def _softmax(lp: np.ndarray) -> np.ndarray:
     return p / p.sum()
 
 
+#: L1 calibrators by the `method` prefix their artifacts carry. A calibrator registers here and
+#: `load_artifact` finds it; anything unregistered raises instead of being read as a temperature.
+#: Before 0.2.0 the dispatch fell through, so an artifact with any other method reached
+#: `TemperatureScaler.from_dict` and died on a missing key -- or, worse, would have loaded as a
+#: temperature of 1.0 and silently done nothing. The same shape of bug had already happened once with
+#: head banks, which is why this is a table and not another `startswith`.
+CALIBRATORS: Dict[str, Any] = {"temperature": TemperatureScaler}
+
+
 class Decider:
     DEFAULT_PRIOR_STRENGTH = {"batch": 0.75, "content_free": 1.0, "none": 0.0}
     RANDOM_LISTING_MAX_K = 8            # fit_head(listing="auto"): random listing orders up to this many options
@@ -49,8 +59,11 @@ class Decider:
                  max_permutations: Optional[int] = None, combine: str = "logmean",
                  cf_probes: Sequence[str] = DEFAULT_PROBES, record_content_free: bool = False,
                  system: str = DEFAULT_SYSTEM, shared_prefix="auto", shared_min_prefix_tokens: int = 256,
-                 adaptive_shifts: bool = False, adaptive_min_shifts: int = 2, adaptive_margin: float = 0.1,
-                 adaptive_order: str = "spread", adapt="routed", adapt_min_n: int = 30):
+                 adaptive_shifts: bool = False, adaptive_min_shifts: int = 2,
+                 adaptive_margin: Optional[float] = None, adaptive_stat: str = "logit",
+                 adaptive_target: float = 0.01, adaptive_wave: int = 2,
+                 adaptive_order: str = "spread", canonical_order: bool = False,
+                 adapt="routed", adapt_min_n: int = 30):
         """prior_strength: exponent applied to the prior before dividing (1.0 = full correction,
         0.0 = none). Default 0.75 for the batch prior, 1.0 for the content-free prior: over 230
         (model, question) points the batch prior at 0.75 had the best mean gain and the smallest
@@ -63,12 +76,49 @@ class Decider:
         True shares whenever there are at least 2 permutations, regardless of length;
         False always sends full prompts.
 
-        adaptive_shifts (opt-in): for choice questions, read the cyclic shifts one at a time
-        and stop as soon as every shift read so far, after prior correction, agrees on the
-        winner and the running marginal's top-1 minus top-2 probability is at least
-        `adaptive_margin` (after at least `adaptive_min_shifts` shifts). Cuts the K-fold cost
-        on easy items; the marginal is then an average over a subset of shifts, so residual
-        position bias is bounded by the prior correction rather than cancelled exactly.
+        adaptive_shifts (opt-in in 0.2; the default once the shipped tables are
+        regenerated under it): for choice questions with K >= 3, read the
+        cyclic shifts in `spread_order` and stop once the running marginal is decided enough,
+        after at least `adaptive_min_shifts`. The marginal is then an average over a subset of
+        shifts, so the position bias is reduced rather than cancelled exactly -- which is why the
+        threshold is chosen against a stated disagreement rate with the full-K answer instead of
+        by hand. Set False to always read every shift.
+
+        adaptive_stat: "logit" (default) compares the log-odds margin, top-1 minus top-2 of the
+        marginal in log space; "prob" is the pre-0.6 rule (a probability gap plus unanimity across
+        the shifts read) and is kept for callers who pinned `adaptive_margin`. The log-odds margin
+        is the default because a probability gap saturates at 1 and stops discriminating exactly
+        where the rule has to decide: over four (model, task) cells at K=18-20 it could not certify
+        a 1% disagreement rate on two of them at any threshold (docs/rotation_budget.md).
+
+        adaptive_target: the disagreement rate with the full-K answer that `calibrate_adaptive`
+        certifies. Until a question is calibrated, the threshold is `DEFAULT_LOG_MARGIN` (8.5), the
+        smallest value that certified 1% on all four of those cells at once, worth 1.9x-3.9x;
+        calibrating per (model, question) was worth about 1.5x more.
+
+        adaptive_margin: overrides the threshold for every question, in the units of
+        `adaptive_stat`. None (default) means the calibrated value, or `DEFAULT_LOG_MARGIN`.
+
+        canonical_order (opt-in in 0.2, and worth turning on whenever `adaptive_shifts`
+        is): rotate a canonical listing of the options, ordered by their
+        text, instead of the caller's listing. Reading every shift gives every option every position
+        either way, but which options sit next to each other still follows the caller's order, and a
+        partial shift budget does not cancel the position bias either -- so without this the decision
+        can depend on the order the options were typed in. With it the prompts are a function of the
+        option *set*, so listing the same options any other way returns the same probabilities
+        exactly, at any shift budget. That is what makes `adaptive_shifts` safe to leave on. Note it
+        is a different property from `diagnostics["order_flip_l0"]`, which reports whether the shifts
+        read disagreed among themselves. Set False to reproduce pre-0.6 prompts.
+
+        adaptive_wave: shifts requested per backend call (default 2). A wave overshoots the stop
+        point slightly and in exchange waits on half as many rounds, and a round is a barrier the
+        whole batch sits behind. Measured on Qwen2.5-7B / massive_route, 300 states, at a certified 1%
+        target: on a vLLM server waves of 2 issue the same requests as waves of 1 (7.28 against 7.16)
+        and run 1.7x faster in wall clock (2.22x over the full cycle against 1.32x); on the local
+        transformers backend, where there are no round trips, 1 and 2 tie at 2.34x and wider waves
+        lose. Hence 2: best remotely, tied-best locally. Wider is worse on both
+        (`bench/results_layout/2026-09-27/{vllm,hf}_q25_massive.json`). `adaptive_min_shifts` is
+        effectively rounded up to a multiple of the wave.
 
         adapt (L2): re-estimate a head's feature standardisation from the unlabelled states a
         question is asked on, once `adapt_min_n` have been seen (label-free test-time
@@ -97,16 +147,29 @@ class Decider:
             raise ValueError("shared_prefix must be 'auto', True or False")
         self.shared_prefix = shared_prefix
         self.shared_min_prefix_tokens = shared_min_prefix_tokens
-        if adaptive_min_shifts < 1 or adaptive_margin < 0:
-            raise ValueError("adaptive_min_shifts must be >= 1 and adaptive_margin >= 0")
+        if adaptive_min_shifts < 1:
+            raise ValueError("adaptive_min_shifts must be >= 1")
+        if adaptive_margin is not None and adaptive_margin < 0:
+            raise ValueError("adaptive_margin must be >= 0")
+        if adaptive_stat not in ("logit", "prob"):
+            raise ValueError("adaptive_stat must be 'logit' or 'prob'")
+        if not 0.0 < adaptive_target < 1.0:
+            raise ValueError("adaptive_target must be between 0 and 1")
+        if adaptive_wave < 1:
+            raise ValueError("adaptive_wave must be >= 1")
         self.adaptive_shifts = adaptive_shifts
         self.adaptive_min_shifts = adaptive_min_shifts
         self.adaptive_margin = adaptive_margin
+        self.adaptive_stat = adaptive_stat
+        self.adaptive_target = adaptive_target
+        self.adaptive_wave = adaptive_wave
         if adaptive_order not in ("spread", "consecutive"):
             raise ValueError("adaptive_order must be 'spread' or 'consecutive'")
         self.adaptive_order = adaptive_order
+        self.canonical_order = canonical_order
         self.stats = {"backend_calls": 0, "flat_prompts": 0, "shared_groups": 0, "shared_prompts": 0,
                       "adaptive_items": 0, "adaptive_shifts_total": 0}
+        self._stop: Dict[str, Dict[str, Any]] = {}      # q.key -> calibrated stopping certificate
         self._prefix_len_cache: Dict[str, int] = {}
         self._label_ids: Dict[tuple, List[int]] = {}
         self._artifacts: Dict[str, TemperatureScaler] = {}
@@ -397,7 +460,12 @@ class Decider:
             # order it was fit on. Temperature-only artifacts (0.0.2) still load anywhere.
             raise ValueError("artifact carries a prior fit on a different question layout "
                              f"({artifact['question']} != {question.key}); calibrate this layout")
-        self._artifacts[question.key] = TemperatureScaler.from_dict(artifact)
+        method = str(artifact.get("method", "temperature"))
+        family = method.split(":", 1)[0] or "temperature"
+        if family not in CALIBRATORS:
+            raise ValueError(f"artifact method {method!r} has no loader; register the calibrator in "
+                             f"anyjev.decider.CALIBRATORS (known: {', '.join(sorted(CALIBRATORS))})")
+        self._artifacts[question.key] = CALIBRATORS[family].from_dict(artifact)
 
     def export_artifacts(self, include_observations: bool = False) -> Dict[str, Any]:
         """Every L1 artifact and L2 head this decider holds, keyed by question hash, plus the
@@ -529,8 +597,60 @@ class Decider:
                 for pi in range(len(perms))])
         return self._cf_cache[q.key]
 
-    def _run_adaptive_choice(self, state_texts: List[str], q: Question, level: str, want_cf: bool) -> List[Decision]:
-        """Sequential cyclic shifts with an early stop per state. See __init__ for the rule."""
+    def _stop_rule(self, q: Question) -> Tuple[float, str]:
+        """(threshold, statistic) for this question: an explicit `adaptive_margin` wins, then a
+        certificate from `calibrate_adaptive`, then the measured default."""
+        if self.adaptive_margin is not None:
+            return float(self.adaptive_margin), self.adaptive_stat
+        cert = self._stop.get(q.key)
+        if cert is not None and cert.get("threshold") is not None:
+            return float(cert["threshold"]), cert.get("stat", "logit")
+        if self.adaptive_stat == "prob":
+            return 0.1, "prob"          # the pre-0.6 default; measured at a 2.3% disagreement rate
+        return DEFAULT_LOG_MARGIN, "logit"
+
+    def calibrate_adaptive(self, question: Question, states: Sequence[Any], *,
+                           target: Optional[float] = None, delta: float = 0.05,
+                           level: str = "L0") -> Dict[str, Any]:
+        """Certify a stopping threshold for one question from **unlabelled** states.
+
+        Reads every cyclic shift of every state once through the ordinary pipeline -- so whatever
+        prior and combine rule this Decider is configured with are included -- and then picks the
+        cheapest threshold whose disagreement with the full-K answer is under `target` by a
+        Clopper-Pearson upper bound at confidence 1 - `delta`. The reference is our own full-strength
+        readout, never a label, which is what makes the guarantee free.
+
+        Returns the certificate: the threshold, how many shifts it would have read on these states,
+        and the bound that was achieved. A question with no certificate falls back to
+        `DEFAULT_LOG_MARGIN`. If nothing can be certified at this target the threshold is None and
+        every shift is read, which is the safe direction.
+
+        Spend a few hundred states on it; at a 1% target, 300 states allow three disagreements and
+        the bound is what stops that from being fitted too tightly.
+        """
+        if question.kind != "choice" or question.ordered or question.k < 3:
+            raise ValueError("adaptive shifts only apply to unordered choice questions with k >= 3")
+        if not states:
+            raise ValueError("calibrate_adaptive needs states")
+        target = self.adaptive_target if target is None else target
+        want_cf = level != "raw" and (self.prior == "content_free" or self.record_content_free)
+        record: List[List[Tuple[float, int]]] = []
+        self._run_adaptive_choice([render_state(s) for s in states], question, level, want_cf,
+                                  record=record)
+        margins = np.asarray([[m for m, _ in tr] for tr in record], dtype=np.float64)
+        winners = np.asarray([[w for _, w in tr] for tr in record], dtype=int)
+        threshold, info = choose_threshold(margins, winners, target, self.adaptive_min_shifts, delta)
+        cert = {"threshold": threshold, "stat": "logit", "question_id": question.id, **info}
+        self._stop[question.key] = cert
+        return cert
+
+    def _run_adaptive_choice(self, state_texts: List[str], q: Question, level: str, want_cf: bool,
+                             record: Optional[List[List[Tuple[float, int]]]] = None) -> List[Decision]:
+        """Sequential cyclic shifts with an early stop per state. See __init__ for the rule.
+
+        `record` is the calibration hook: given a list, every shift is read and the running
+        (log-odds margin, winner) after each one is appended per state, so `calibrate_adaptive` can
+        choose a threshold offline from the same pipeline that will serve."""
         tok = self.backend.tokenizer
         labels, ids = self._labels_for(q)
         perms = self._perms(q, level)
@@ -577,33 +697,56 @@ class Decider:
             return np.stack(rows)
 
         order = spread_order(P) if self.adaptive_order == "spread" else list(range(P))
-        for step, r in enumerate(order):
-            if step >= self.adaptive_min_shifts:
-                still = []
-                for si in active:
-                    pc = corrected(si)
-                    winners = {perms[sidx][int(np.argmax(pc[j]))] for j, sidx in enumerate(used[si])}
-                    marg = marginalize(pc, [perms[sidx] for sidx in used[si]], self.combine)
-                    top = np.sort(marg)[::-1]
-                    if len(winners) == 1 and top[0] - top[1] >= self.adaptive_margin:
-                        continue
-                    still.append(si)
-                active = still
+        threshold, stat = self._stop_rule(q)
+        wave = max(1, int(self.adaptive_wave))
+        if record is not None:
+            threshold, wave = None, 1             # calibration reads every shift, one at a time, and
+            trace = [[] for _ in range(n)]        # decides offline once it has the whole trace
+
+        def decided(si: int) -> bool:
+            """The stopping rule. `logit` compares the log-odds margin, which does not saturate;
+            `prob` keeps the pre-0.6 behaviour (a probability gap plus unanimity across the shifts
+            read) for callers who pinned `adaptive_margin`."""
+            pc = corrected(si)
+            marg = marginalize(pc, [perms[sidx] for sidx in used[si]], self.combine)
+            if record is not None:
+                trace[si].append((log_margin(marg), int(np.argmax(marg))))
+                return False
+            if stat == "logit":
+                return log_margin(marg) >= threshold
+            winners = {perms[sidx][int(np.argmax(pc[j]))] for j, sidx in enumerate(used[si])}
+            top = np.sort(marg)[::-1]
+            return len(winners) == 1 and top[0] - top[1] >= threshold
+
+        for start in range(0, P, wave):
+            batch = order[start:start + wave]
+            if start > 0 and (start >= self.adaptive_min_shifts or record is not None):
+                active = [si for si in active if not decided(si)]
             if not active:
                 break
-            prompts, pids, parts = [], [], []
-            for si in active:
-                pre, suf = render_chat_parts(tok, build_prompt(state_texts[si], q, perms[r], self.system, labels))
-                prompts.append(pre + suf)
-                pids.append(perm_ids[r])
-                parts.append((pre, suf))
-            for si, lp in zip(active, self._score(prompts, pids, parts)):
+            # one backend call per wave: `adaptive_wave > 1` trades a little precision in the stop
+            # point for fewer round trips, which is what a remote engine charges for.
+            prompts, pids, parts, who, which = [], [], [], [], []
+            for r in batch:
+                for si in active:
+                    pre, suf = render_chat_parts(tok, build_prompt(state_texts[si], q, perms[r],
+                                                                  self.system, labels))
+                    prompts.append(pre + suf)
+                    pids.append(perm_ids[r])
+                    parts.append((pre, suf))
+                    who.append(si)
+                    which.append(r)
+            for si, r, lp in zip(who, which, self._score(prompts, pids, parts)):
                 p = _softmax(lp)
                 lp_rows[si].append(lp)
                 p_rows[si].append(p)
                 used[si].append(r)
                 shift_sum[r] += p
                 shift_n[r] += 1
+        if record is not None:
+            for si in range(n):
+                decided(si)                       # the margin after the final shift
+                record.append(trace[si])
         # fold this call into the running prior (per shift, only the items that ran it)
         # stored as a P x K sum with a single count: use the shift-0 count, which every item ran
         scale = (shift_n[0] / np.maximum(shift_n, 1))[:, None]
@@ -621,6 +764,7 @@ class Decider:
                 "answer_mass": float(np.exp(np.stack(lp_rows[si])).sum(axis=1).mean()),
                 "raw_probs": raw_probs, "permutations": len(used_perms), "perms": used_perms,
                 "p_pos_raw": p_pos_raw, "shifts_used": len(used_perms), "adaptive": True,
+                "stop_threshold": threshold, "stop_stat": stat, "stop_calibrated": q.key in self._stop,
                 "prior_method": self.prior if prior_for(used[si][0]) is not None else "none",
                 "prior_strength": strength if prior_for(used[si][0]) is not None else 0.0,
                 "prior": (np.stack([prior_for(sidx) for sidx in used[si]])
@@ -657,7 +801,19 @@ class Decider:
             return [list(range(q.k))]
         if q.kind == "noul":
             return [[0, 1], [1, 0]]
-        return cyclic_shifts(q.k, self.max_permutations)
+        shifts = cyclic_shifts(q.k, self.max_permutations)
+        if not self.canonical_order:
+            return shifts
+        # Rotate a canonical listing rather than the caller's. Reading every shift already gives
+        # every option every position, but *which options sit next to each other* still follows the
+        # caller's order, and options attend to one another (research log entry 21), so the readout
+        # is not otherwise invariant to how the list was typed -- and it is much less so when only
+        # a few shifts are read. Ordering by the option text first makes the prompts a function of
+        # the option *set*, so any two listings of the same options produce the same decision
+        # exactly, at any shift budget. Equal texts fall back to the caller's order, which is
+        # harmless because equal options are interchangeable.
+        canon = sorted(range(q.k), key=lambda i: (str(q.options[i]), i))
+        return [[canon[i] for i in perm] for perm in shifts]
 
     def _run(self, states: List[Any], questions: List[Question], level: str) -> Dict[tuple, Decision]:
         if level not in LEVELS:

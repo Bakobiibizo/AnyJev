@@ -58,6 +58,23 @@ d.fit_head(route, states, labels, layers=[-1])   # 100–300 labels, one closed-
 d.decide(ticket, [route])["route"].distribution  # {"billing": 0.81, "technical": 0.07, ...}
 ```
 
+**Without labels, turn on the rotation budget — recommended for any K-option `choice`.** L0 asks the
+model once per option rotation so that no option is favoured by its position. Most decisions do not need
+all K: read them one at a time, stop when the leader is far enough ahead, and the threshold can be
+calibrated so the answer matches the full cycle's a stated fraction of the time — measured against
+**our own full-strength readout, so it needs no labels at all.**
+
+```python
+d = Decider(VLLMBackend("http://localhost:8000", "./qwen-b18"), adaptive_shifts=True)
+d.calibrate_adaptive(route, unlabelled_tickets, target=0.01)   # a few hundred states, no labels
+d.decide_batch(tickets, route)      # diagnostics: shifts_used, stop_threshold
+```
+
+7.2 rotations instead of 18 at a certified 1% disagreement rate, **2.2× the decisions per second on
+vLLM and 2.3×–2.7× on the transformers backend**, accuracy unchanged
+([docs/rotation_budget.md](docs/rotation_budget.md)). It is opt-in in 0.2.0 only because the tables in
+`docs/` were measured before it existed; it becomes the default when they are regenerated.
+
 **An L2 deployment is a pooling server plus a few kilobytes of head.** No logits, no parsing, no
 patched engine, and nothing generated. raw / L0 / L1 run the same way against a `--task generate`
 server. A head fit through `transformers` and served by vLLM answers the same as one fit and
@@ -152,7 +169,7 @@ needed only for a new question. [How the routing works →](https://github.com/n
 | **`L2`** | **100–300 labels per question** | **a closed-form head on the hidden state partway down, one prompt per state** | **transfer to another question or model** |
 
 Every `Decision` carries its `level`, and `require="L1"` makes downstream code refuse to act on a
-weaker one. L0 costs K prefills for a K-option choice; **L2 costs less than one plain forward**.
+weaker one. L0 costs K prefills for a K-option choice, or about 7 of 18 with the rotation budget on (`adaptive_shifts=True`, recommended — see [Serve it](#-serve-it)). **L2 costs less than one plain forward**.
 
 `d.observe(q, state, label)` collects labels as they arrive and solves the head by itself at 30,
 re-solving at 60, 120, … so day 0 runs at L0 with nothing and L2 arrives when the loop has fed it.

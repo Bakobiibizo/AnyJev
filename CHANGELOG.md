@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- **New, opt-in: L0 can read as many option rotations as the decision needs instead of K, with the
+  rotations turning a canonical listing.** Opt-in rather than default only because every table in `docs/`
+  was measured before it existed; the defaults flip in the release that regenerates them. `Decider(adaptive_shifts=True)` is now the default and the stopping rule
+  compares the **log-odds margin** of the running marginal (`adaptive_stat="logit"`) against a threshold
+  with a stated meaning: `Decider.calibrate_adaptive(question, states, target=0.01)` reads every rotation
+  of a batch of **unlabelled** states once and returns the cheapest threshold whose disagreement with the
+  full-K answer is under `target` by a Clopper-Pearson upper bound (`anyjev/calibrate/stopping.py`). The
+  reference is our own full-strength readout, never a label, so the guarantee costs only calibration
+  compute. Before a question is calibrated the threshold is `DEFAULT_LOG_MARGIN` (8.5), the smallest value
+  that certified 1% on four (model, task) cells at once. Measured on Qwen2.5-7B and Qwen3-8B over
+  massive_route (K=18) and newsgroups (K=20), 900 states each: the uncalibrated default reads 5.1-9.7
+  rotations (1.9x-3.9x), per-question calibration reads 4.8-6.1 (2.9x-4.2x) with held-out disagreement
+  0.000-0.008, and accuracy is within 0.5 points of the full cycle either way. End to end at a certified
+  1% target on 300 states: **2.22x the decisions per second on a vLLM server and 2.3x-2.7x on the transformers
+  backend** (two runs; the adaptive rows are stable and the full-cycle reference varies, so the ratio
+  inherits its variance — `docs/rotation_budget.md` states both), 7.2 requests per decision instead of 18, agreement 0.987, accuracy 0.703 against 0.697
+  (`bench/results_layout/2026-09-27/`, `docs/rotation_budget.md`, research log entries 23 and 24).
+  `Decider(adaptive_wave=n)` asks for n rotations per backend call; the default is 2 because a round is a
+  barrier the whole batch waits behind -- on vLLM, waves of 1 and 2 issue the same requests and differ by
+  1.7x in wall clock, while locally they tie. `adaptive_shifts=False` reads every rotation.
+- **`Decider(canonical_order=True)`, also new, is what makes stopping early safe, so turn the two on together.** The
+  rotations now turn a listing of the options ordered by their text rather than the caller's listing.
+  Reading every rotation already gave every option every position, but which options sit next to each
+  other still followed the caller's order and a partial budget does not cancel the position bias either,
+  so the decision could depend on how the list was typed. With it the prompts are a function of the option
+  *set*: any two listings of the same options return identical probabilities, at any rotation budget --
+  a stronger guarantee than the full cycle used to give. The statistic had to change for the same reason
+  the old margin never bound: a probability gap saturates at 1, which is why `docs/results_adaptive.md`
+  found margins of 0.05, 0.1 and 0.2 indistinguishable, and why on two of the four cells above no
+  probability-gap threshold could certify a 1% rate at all. `adaptive_stat="prob"` restores the pre-0.2
+  rule, `adaptive_margin` pins a threshold by hand, `canonical_order=False` restores pre-0.2 prompts.
+  Tests in `tests/test_stopping.py`, including that a calibration set too small to certify a target
+  returns no threshold and reads every rotation rather than pretending.
+- **Every result JSON now records the readout it was produced with** (`env.readout`, from
+  `bench.run.readout_settings`). A benchmark that inherits the library's defaults is fine; one that does
+  not record them is not, because changing a default then moves every published row with nothing in the
+  JSON to show it. This change is exactly that case, which is why the record is centralised in
+  `environment()` rather than pinned per harness.
+- Fix: `Decider.load_artifact` dispatched on the artifact's `method` by testing for `head:` and letting
+  everything else fall through to `TemperatureScaler`, so an artifact from any other L1 calibrator died
+  on a missing key -- or would have loaded as a temperature of 1.0 and silently done nothing. Dispatch is
+  now a registry, `anyjev.decider.CALIBRATORS`, an unregistered method raises, and adding an L1
+  calibrator is one line. Found while answering issue #8 (@Yasas-Sri).
+
+- **Tree: the repository carries only what a reader of the project needs.** `handoff/` is gone: it held
+  internal coordination notes and the scratch scripts that went with them, which a public tree should
+  not carry. The maze result JSON and the `bench.run_maze` harness stay, since `docs/results_maze.md`
+  cites them. CI and the
+  contributor instructions no longer lint a directory that does not exist.
+- Tree: `docs/archive/` collects prose that no longer describes current behaviour but still explains a
+  decision or a version worth looking up, with a `README.md` stating the rule for what belongs there and
+  what must never be moved into it (result JSON, and `docs/research_log.md`). First entry:
+  `release-notes-v0.0.2.md`, which names `CHANGELOG.md` as the record itself.
+- Fix: the NanoJev comparison rows recorded the path the checkout happened to sit at on the run host.
+  The path said nothing a reader can use -- `nanojev_commit` is what pins the comparison -- so it is
+  replaced by a note pointing at that field. Only that one value changed in the seven files.
+
 ## 0.1.0 (2026-09-26)
 
 Version 3 of the method: a closed-form head at a fixed depth, routing, label-free adaptation, a packaged demo, and a tree that
@@ -13,7 +72,7 @@ carries only the shipped code and the result JSON a doc cites (`docs/migration_v
 - Online label collection and persistence. `Decider.observe(question, state, label, fit_at=30, refit_factor=2.0, **fit_kwargs)` records a labelled state and solves the question's L2 head itself once `fit_at` observations exist (never below max(8, 2K)), re-solving each time the count grows by `refit_factor` (30, 60, 120, ...); it returns the artifact dict on the call that (re)solved a head, else `None`, and with `level="auto"` the question answers at L0 until then and at L2 afterwards; `Decider.observations(question)` returns the recorded (states, labels). `export_artifacts(include_observations=False)` now also writes the label-free adaptation statistics of every routed question (`adaptation`: per question key, `sum` / `sumsq` / `n`, arrays in the compact format) and, on request, the observations; `load_artifacts` restores both, so a restarted decider answers a reworded question adapted from its first request. `python -m demo.jev_mode --backend fake --lifecycle` (also `--backend hf --questions <workflow.qname>`, with `--stream` and `--fit-at`) plays this through: day 0 at L0, labels arriving one at a time until the head solves itself at 30 (then 60, 120), a rewording served by the same decider and recentred after 30 requests, then export / restart / load with the statistics and observations restored (on the synthetic model, numbers planted: L0 0.86 on day 0, L2 0.98 at the 30th label, the rewording 0.47 as is and 1.00 recentred, probabilities identical across the restart to floating-point precision, max |dp| under 1e-50). Tests in `tests/test_decider_fake.py` and `tests/test_demo_jev_mode.py`.
 - Research code behind L2, all replaying float16 feature caches on CPU: `anyjev/heads.py` (diff-means / LDA / ridge / RRR solvers, `fit_head`), `bench/pools.py` + `bench/extract_pools.py` (the block-loop feature caches every study replays; the former `bench.universal_study --extract-only`), `bench/exit_study.py` (accuracy versus depth, logit lens baseline), `bench/labels_study.py` (label-efficiency curve), `bench/jev_mode_table.py` (depth chosen on calibration data only), `bench/exit_latency.py` (ms per decision by depth), `bench/paraphrase_study.py` (wording and listing order, adaptation), `bench/distill_heads.py`. The question-agnostic head, the confidence-gated early-exit cascade and distillation from a 32B teacher's zero-label answers were tried, closed as negative results (research log entries 1 / 3 / 9 / 11, 4 / 10, 7) and their code removed; the JSON of all three is kept: `bench/results_universal/`, `bench/results_heads/`, `bench/results_distill/`, and `bench/results_exit/2026-09-22/<model>.cascade.json` (the cascade tables are in research log entries 4 and 10). Block-loop feature extraction in `HFBackend` (`_prepare` / `_run_layers`, `hidden_states_to` with `max_layer` and a restricted logit lens), option-line spans in `anyjev/readout.py`, planted hidden states in `FakeBackend`.
 - Tree: result directories no shipped doc or table generator cites were dropped (`bench/results_v01/2026-09-21`, `results_typed_v01/2026-09-21`, `results_nanojev/2026-09-21`, `results_cf`, `results_distill/labels`, `handoff/games/superseded`), internal drafts under `docs/` removed, `docs/diag_l0_output.txt` regenerated from the directories `docs/when_l0_helps.md` names, and the offline prior study replayed on the committed dumps (230 units). `docs/migration_v3.md` has the full list and the renamed commands.
-- Bench (maze, a negative result so far): `bench.games.maze` + `bench.run_maze` play a seeded grid maze on raw / L0 / L1 P(open) answers with full trajectories, `scripts/make_maze_gif.py` replays them; on Qwen3-8B no readout beats blind trying yet. Status and next steps (snake, ViZDoom) in `handoff/games/HANDOFF.md`.
+- Bench (maze, a negative result so far): `bench.games.maze` + `bench.run_maze` play a seeded grid maze on raw / L0 / L1 P(open) answers with full trajectories, `scripts/make_maze_gif.py` replays them; on Qwen3-8B no readout beats blind trying yet.
 - Demo: two games as decision benchmarks with a built-in oracle (`demo/games/`, `python -m demo.games.twenty48`, `python -m demo.games.minesweeper`). 2048 is a 4-way choice under randomness scored by a depth-2 expectimax (oracle agreement, regret, flip under option reversal, ECE of the move probabilities); Minesweeper asks one `noul` per candidate cell and compares the model's P(safe) with the exact posterior enumerated from the revealed numbers (safest-pick rate, avoidable deaths, |P - exact|). Both play the same seeds under raw, L0 and L1 (temperature fit on oracle- or self-play-labelled decisions, no human labels), draw a live text frame per turn, and run on the synthetic biased backend without a GPU (`--backend fake`), which is how the tests exercise them.
 - From the second-run reproduction (`repro_check`, 2026-09-22; ours, from a clean checkout on the same GPU host): L1 artifacts now freeze the prior they were fit with (`prior`, `prior_strength`, `prior_method`, `n_calib` in the artifact), so calibration is a pure function of its calibration set and L1 decisions no longer depend on decider history; every result JSON records `batch_size`, dtype, backend, shared-prefix mode, the `anyjev` version and the git commit; the maze providers compute `edge_majority` and `mean_p_true` themselves, pin the NanoJev commit and the episodes file hash, and drop per-cell observations unless `--keep-observations`.
 - Second pass of the same reproduction, on the fixed code: content-free probes are now scored in their own forward call. Before, the first time a Decider saw a question the probe prompts were batched together with the real states, which shifted every batch boundary and moved bf16 logits at the third decimal; a fresh Decider and a used one therefore scored the same states slightly differently (0.0008 in the fitted temperature), and `record_content_free`, a bench diagnostics flag, changed the numbers. Now neither does; the test suite checks that the real-state prompts handed to the backend are identical with and without the flag.
