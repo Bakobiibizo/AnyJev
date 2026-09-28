@@ -34,4 +34,4 @@ One GPU session: `python -m bench.extract_pools --model <id> --layers ...`, `ben
 - **Tests before features.** Calibration methods land with a unit test on synthetic logits where the answer is known analytically (`anyjev/backends/fake.py` makes this easy).
 - **Compare fairly.** When a table names another project, run it on identical inputs with its own recommended settings, say which protocol, and link the file that produced the number.
 
-`pip install -e ".[dev]"`, then `ruff check anyjev bench demo handoff scripts space tests && pytest -q` runs what CI runs, on CPU, in a few seconds.
+`pip install -e ".[dev]"`, then `ruff check anyjev bench demo scripts space tests && pytest -q` runs what CI runs, on CPU, in a few seconds.

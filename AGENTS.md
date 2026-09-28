@@ -22,7 +22,7 @@
 ## Environment
 
 - Python 3.10+. `pip install -e ".[dev]"` for the core; `.[hf,bench]` for real models and datasets (`transformers>=4.53` for the L2 block loop).
-- `ruff check anyjev bench demo handoff scripts space tests && pytest -q` is what CI runs; both must be green on CPU with numpy alone.
+- `ruff check anyjev bench demo scripts space tests && pytest -q` is what CI runs; both must be green on CPU with numpy alone.
 - Bench runs record `nvidia-smi`, torch, and transformers versions. Do not mix hardware within one results table.
 
 ## Ask a human about

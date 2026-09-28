@@ -1,4 +1,4 @@
-*Release body of 0.0.2, kept as published; [CHANGELOG.md](../CHANGELOG.md) is the record.*
+*Release body of 0.0.2, kept as published; [CHANGELOG.md](../../CHANGELOG.md) is the record.*
 
 - README GIF: `scripts/find_flip_example.py` finds real items where raw readout flips under option reversal and L0 does not; `scripts/make_flip_gif.py` renders them (`assets/flip.gif`, Qwen3-8B on BANKING77). `space/` holds the Hugging Face Space entry point.
 

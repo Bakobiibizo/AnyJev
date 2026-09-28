@@ -101,7 +101,7 @@ is a closed result, and the JSON is its record.
   0.0.2-era docs quoted; `docs/when_l0_helps.md` carries the regenerated table.
 - `pyproject.toml`: version 0.1.0; the `hf` extra needs `transformers>=4.53` (the L2 block loop uses
   `transformers.masking_utils`).
-- CI lints `demo/`, `scripts/`, `handoff/` and `space/` as well: `ruff check anyjev bench demo handoff scripts space tests`.
+- CI lints `demo/`, `scripts/` and `space/` as well: `ruff check anyjev bench demo scripts space tests`.
 
 ## README claims corrected in this pass
 

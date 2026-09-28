@@ -28978,7 +28978,7 @@
  "prior": "none",
  "engine": "anyjev",
  "date": "2026-09-22T12:02:42.934687",
- "nanojev_dir": "/mnt/persist/anyjev_ws/NanoJev",
+ "nanojev_dir": "(local checkout; see nanojev_commit)",
  "nanojev_commit": "618cea6d906d54e128360786d12f703fff2b1245",
  "episodes_sha256": "01ccf57f09848c13600648d59fb8eb120008453e9ceae59108f63846ff995125"
 }
