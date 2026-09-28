@@ -174,7 +174,7 @@ def main(argv=None):
     results = {"model": args.model, "dataset": "LocalLLaMA/typed-decisions", "prior": args.prior,
                "prior_strength": args.prior_strength, "limit_cases": args.limit_cases,
                "calib_cases_per_workflow": args.calib_cases,
-               "env": environment(batch_size=args.batch_size, dtype=decider.backend.dtype, backend="hf",
+               "env": environment(decider, batch_size=args.batch_size, dtype=decider.backend.dtype, backend="hf",
                                   shared_prefix=str(decider.shared_prefix)),
                **run(decider, test, calib, levels, dump)}
     stamp = dt.datetime.now().strftime("%Y-%m-%d")

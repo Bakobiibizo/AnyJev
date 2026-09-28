@@ -165,13 +165,40 @@ def markdown_table(results: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def environment(**run_settings: Any) -> Dict[str, Any]:
+READOUT_SETTINGS = ("level", "prior", "prior_strength", "combine", "max_permutations",
+                    "shared_prefix", "adaptive_shifts", "adaptive_stat", "adaptive_target",
+                    "adaptive_margin", "adaptive_min_shifts", "adaptive_wave", "adaptive_order",
+                    "canonical_order")
+
+
+def readout_settings(decider) -> Dict[str, Any]:
+    """Every Decider setting that changes what a number means.
+
+    A benchmark that inherits the library's defaults is fine; one that does not record them is not,
+    because a later change to a default then moves every published row with nothing in the JSON to
+    show it. `adaptive_shifts` and `canonical_order` both became defaults in 0.2.0, which is what made
+    this worth centralising here rather than pinning each harness."""
+    out: Dict[str, Any] = {}
+    for k in READOUT_SETTINGS:
+        if hasattr(decider, k):
+            v = getattr(decider, k)
+            out[k] = v if isinstance(v, (int, float, str, bool, type(None))) else str(v)
+    if getattr(decider, "prior", None) == "batch" and hasattr(decider, "strength"):
+        out["prior_strength_effective"] = decider.strength()
+    return out
+
+
+def environment(decider=None, **run_settings: Any) -> Dict[str, Any]:
     """Library versions, hardware, and every setting that changes the numbers. The repro check
-    found that bf16 logits move with --batch-size (0.0105 on raw at n=300), so it is recorded."""
+    found that bf16 logits move with --batch-size (0.0105 on raw at n=300), so it is recorded.
+
+    Pass the `decider` and its readout configuration is recorded too, under `readout`."""
     import anyjev
 
     env: Dict[str, Any] = {"python": platform.python_version(), "date": dt.datetime.now().isoformat(),
                            "anyjev": anyjev.__version__, **run_settings}
+    if decider is not None:
+        env["readout"] = readout_settings(decider)
     try:
         env["git_commit"] = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
                                            timeout=10, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -233,7 +260,8 @@ def main(argv=None):
                                "adaptive": args.adaptive, "adaptive_margin": args.adaptive_margin,
                                "adaptive_order": args.adaptive_order,
                                "prior_strength": args.prior_strength,
-                               "env": environment(batch_size=args.batch_size, dtype=getattr(backend, "dtype", None),
+                               "env": environment(decider, batch_size=args.batch_size,
+                                                  dtype=getattr(backend, "dtype", None),
                                                   backend=args.backend, shared_prefix=str(decider.shared_prefix)),
                                "tasks": []}
     stamp = dt.datetime.now().strftime("%Y-%m-%d")

@@ -121,7 +121,7 @@ def main(argv=None):
     artifact.update({"anyjev": anyjev.__version__, "n_blocks": L, "hidden_size": be.hidden_size,
                      "candidates": candidates, "questions": {k: v["question_id"] for k, v in artifact["heads"].items()},
                      "validation": {"per_question": validation, "summary": summary},
-                     "date": dt.datetime.now().isoformat(), "env": environment(batch_size=args.batch_size)})
+                     "date": dt.datetime.now().isoformat(), "env": environment(dec, batch_size=args.batch_size)})
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, f"{args.model.replace('/', '__')}.json")
     with open(path, "w") as f:
