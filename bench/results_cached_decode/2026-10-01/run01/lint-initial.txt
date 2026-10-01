@@ -1,0 +1,34 @@
+E501 Line too long (133 > 120)
+   --> bench/cached_decode.py:120:121
+    |
+118 |          "prefix_agreement": "Nonempty literal reply is a character prefix of canonical gold, including exact",
+119 |          "strict_partial_prefix": "Prefix agreement excluding exact",
+120 |          "semantic_value": "Whole reply equals a presealed complete authored value after casefold and one optional leading a/an/the",
+    |                                                                                                                         ^^^^^^^^^^^^^
+121 |          "synonyms": SYNONYMS, "synonym_scope": "Only action values with explicitly declared corpus aliases",
+122 |          "forbidden": ["whitespace stripping", "punctuation stripping", "extra-word removal", "new equivalences",
+    |
+
+E501 Line too long (123 > 120)
+   --> bench/cached_decode.py:124:121
+    |
+122 |          "forbidden": ["whitespace stripping", "punctuation stripping", "extra-word removal", "new equivalences",
+123 |                        "model judge", "learned head", "generation beyond budget or EOS"],
+124 |          "timing_scope": "CUDA synchronized forward plus argmax/ID transfer; input tensor setup and text/scoring separate",
+    |                                                                                                                         ^^^
+125 |          "license": "Repo-authored Apache-2.0 panel and already cached Apache-2.0 checkpoint; no new dataset",
+126 |          "old_attention_gate": "Remains failed; no attention reconstruction used"})
+    |
+
+E741 Ambiguous variable name: `l`
+   --> bench/cached_decode.py:176:34
+    |
+174 | def finish(out):
+175 |     """Aggregate actual budgets and actual step timings, without extrapolated optimized costs."""
+176 |     records = [json.loads(l) for l in (out / "observations.jsonl").read_text().splitlines()]
+    |                                  ^
+177 |     assert len(records) == 1512 and len({r["id"] for r in records}) == 1512
+178 |     groups = defaultdict(list)
+    |
+
+Found 3 errors.

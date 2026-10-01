@@ -1,0 +1,482 @@
+{
+ "origin": "protocol.json + targets.json + observations.jsonl",
+ "summary": [
+  {
+   "budget": 1,
+   "kind": "action",
+   "n": 216,
+   "exact_literal": 0,
+   "prefix_agreement": 0,
+   "strict_partial_prefix": 0,
+   "semantic_value": 0,
+   "early_eos": 0,
+   "decode_median_ms": 0.0
+  },
+  {
+   "budget": 1,
+   "kind": "actor",
+   "n": 216,
+   "exact_literal": 45,
+   "prefix_agreement": 199,
+   "strict_partial_prefix": 154,
+   "semantic_value": 45,
+   "early_eos": 0,
+   "decode_median_ms": 0.0
+  },
+  {
+   "budget": 1,
+   "kind": "all",
+   "n": 1512,
+   "exact_literal": 233,
+   "prefix_agreement": 831,
+   "strict_partial_prefix": 598,
+   "semantic_value": 307,
+   "early_eos": 0,
+   "decode_median_ms": 0.0
+  },
+  {
+   "budget": 1,
+   "kind": "location",
+   "n": 216,
+   "exact_literal": 0,
+   "prefix_agreement": 151,
+   "strict_partial_prefix": 151,
+   "semantic_value": 0,
+   "early_eos": 0,
+   "decode_median_ms": 0.0
+  },
+  {
+   "budget": 1,
+   "kind": "object",
+   "n": 216,
+   "exact_literal": 0,
+   "prefix_agreement": 13,
+   "strict_partial_prefix": 13,
+   "semantic_value": 71,
+   "early_eos": 0,
+   "decode_median_ms": 0.0
+  },
+  {
+   "budget": 1,
+   "kind": "possessive",
+   "n": 216,
+   "exact_literal": 57,
+   "prefix_agreement": 173,
+   "strict_partial_prefix": 116,
+   "semantic_value": 57,
+   "early_eos": 0,
+   "decode_median_ms": 0.0
+  },
+  {
+   "budget": 1,
+   "kind": "reported_source",
+   "n": 216,
+   "exact_literal": 72,
+   "prefix_agreement": 216,
+   "strict_partial_prefix": 144,
+   "semantic_value": 72,
+   "early_eos": 0,
+   "decode_median_ms": 0.0
+  },
+  {
+   "budget": 1,
+   "kind": "temporal",
+   "n": 216,
+   "exact_literal": 59,
+   "prefix_agreement": 79,
+   "strict_partial_prefix": 20,
+   "semantic_value": 62,
+   "early_eos": 0,
+   "decode_median_ms": 0.0
+  },
+  {
+   "budget": 2,
+   "kind": "action",
+   "n": 216,
+   "exact_literal": 0,
+   "prefix_agreement": 0,
+   "strict_partial_prefix": 0,
+   "semantic_value": 2,
+   "early_eos": 0,
+   "decode_median_ms": 85.39312845095992
+  },
+  {
+   "budget": 2,
+   "kind": "actor",
+   "n": 216,
+   "exact_literal": 152,
+   "prefix_agreement": 199,
+   "strict_partial_prefix": 47,
+   "semantic_value": 152,
+   "early_eos": 0,
+   "decode_median_ms": 85.33131470903754
+  },
+  {
+   "budget": 2,
+   "kind": "all",
+   "n": 1512,
+   "exact_literal": 636,
+   "prefix_agreement": 824,
+   "strict_partial_prefix": 188,
+   "semantic_value": 886,
+   "early_eos": 0,
+   "decode_median_ms": 85.31707688234746
+  },
+  {
+   "budget": 2,
+   "kind": "location",
+   "n": 216,
+   "exact_literal": 61,
+   "prefix_agreement": 151,
+   "strict_partial_prefix": 90,
+   "semantic_value": 110,
+   "early_eos": 0,
+   "decode_median_ms": 85.31919494271278
+  },
+  {
+   "budget": 2,
+   "kind": "object",
+   "n": 216,
+   "exact_literal": 7,
+   "prefix_agreement": 9,
+   "strict_partial_prefix": 2,
+   "semantic_value": 144,
+   "early_eos": 0,
+   "decode_median_ms": 85.2928594686091
+  },
+  {
+   "budget": 2,
+   "kind": "possessive",
+   "n": 216,
+   "exact_literal": 137,
+   "prefix_agreement": 170,
+   "strict_partial_prefix": 33,
+   "semantic_value": 137,
+   "early_eos": 0,
+   "decode_median_ms": 85.27045953087509
+  },
+  {
+   "budget": 2,
+   "kind": "reported_source",
+   "n": 216,
+   "exact_literal": 200,
+   "prefix_agreement": 216,
+   "strict_partial_prefix": 16,
+   "semantic_value": 200,
+   "early_eos": 0,
+   "decode_median_ms": 85.38979245349765
+  },
+  {
+   "budget": 2,
+   "kind": "temporal",
+   "n": 216,
+   "exact_literal": 79,
+   "prefix_agreement": 79,
+   "strict_partial_prefix": 0,
+   "semantic_value": 141,
+   "early_eos": 0,
+   "decode_median_ms": 85.29129042290151
+  },
+  {
+   "budget": 3,
+   "kind": "action",
+   "n": 216,
+   "exact_literal": 0,
+   "prefix_agreement": 0,
+   "strict_partial_prefix": 0,
+   "semantic_value": 1,
+   "early_eos": 6,
+   "decode_median_ms": 169.55032059922814
+  },
+  {
+   "budget": 3,
+   "kind": "actor",
+   "n": 216,
+   "exact_literal": 191,
+   "prefix_agreement": 199,
+   "strict_partial_prefix": 8,
+   "semantic_value": 191,
+   "early_eos": 48,
+   "decode_median_ms": 168.85847877711058
+  },
+  {
+   "budget": 3,
+   "kind": "all",
+   "n": 1512,
+   "exact_literal": 721,
+   "prefix_agreement": 819,
+   "strict_partial_prefix": 98,
+   "semantic_value": 936,
+   "early_eos": 326,
+   "decode_median_ms": 169.0720096230507
+  },
+  {
+   "budget": 3,
+   "kind": "location",
+   "n": 216,
+   "exact_literal": 84,
+   "prefix_agreement": 151,
+   "strict_partial_prefix": 67,
+   "semantic_value": 139,
+   "early_eos": 0,
+   "decode_median_ms": 169.93992612697184
+  },
+  {
+   "budget": 3,
+   "kind": "object",
+   "n": 216,
+   "exact_literal": 4,
+   "prefix_agreement": 4,
+   "strict_partial_prefix": 0,
+   "semantic_value": 138,
+   "early_eos": 68,
+   "decode_median_ms": 168.76062098890543
+  },
+  {
+   "budget": 3,
+   "kind": "possessive",
+   "n": 216,
+   "exact_literal": 147,
+   "prefix_agreement": 170,
+   "strict_partial_prefix": 23,
+   "semantic_value": 147,
+   "early_eos": 70,
+   "decode_median_ms": 168.70704502798617
+  },
+  {
+   "budget": 3,
+   "kind": "reported_source",
+   "n": 216,
+   "exact_literal": 216,
+   "prefix_agreement": 216,
+   "strict_partial_prefix": 0,
+   "semantic_value": 216,
+   "early_eos": 72,
+   "decode_median_ms": 168.39229525066912
+  },
+  {
+   "budget": 3,
+   "kind": "temporal",
+   "n": 216,
+   "exact_literal": 79,
+   "prefix_agreement": 79,
+   "strict_partial_prefix": 0,
+   "semantic_value": 104,
+   "early_eos": 62,
+   "decode_median_ms": 169.03777793049812
+  },
+  {
+   "budget": 4,
+   "kind": "action",
+   "n": 216,
+   "exact_literal": 0,
+   "prefix_agreement": 0,
+   "strict_partial_prefix": 0,
+   "semantic_value": 1,
+   "early_eos": 36,
+   "decode_median_ms": 252.9488222207874
+  },
+  {
+   "budget": 4,
+   "kind": "actor",
+   "n": 216,
+   "exact_literal": 199,
+   "prefix_agreement": 199,
+   "strict_partial_prefix": 0,
+   "semantic_value": 199,
+   "early_eos": 163,
+   "decode_median_ms": 169.61972042918205
+  },
+  {
+   "budget": 4,
+   "kind": "all",
+   "n": 1512,
+   "exact_literal": 818,
+   "prefix_agreement": 818,
+   "strict_partial_prefix": 0,
+   "semantic_value": 1017,
+   "early_eos": 920,
+   "decode_median_ms": 170.86345492862165
+  },
+  {
+   "budget": 4,
+   "kind": "location",
+   "n": 216,
+   "exact_literal": 151,
+   "prefix_agreement": 151,
+   "strict_partial_prefix": 0,
+   "semantic_value": 206,
+   "early_eos": 119,
+   "decode_median_ms": 173.5433356370777
+  },
+  {
+   "budget": 4,
+   "kind": "object",
+   "n": 216,
+   "exact_literal": 3,
+   "prefix_agreement": 3,
+   "strict_partial_prefix": 0,
+   "semantic_value": 126,
+   "early_eos": 129,
+   "decode_median_ms": 170.2587364707142
+  },
+  {
+   "budget": 4,
+   "kind": "possessive",
+   "n": 216,
+   "exact_literal": 170,
+   "prefix_agreement": 170,
+   "strict_partial_prefix": 0,
+   "semantic_value": 170,
+   "early_eos": 174,
+   "decode_median_ms": 169.1967777442187
+  },
+  {
+   "budget": 4,
+   "kind": "reported_source",
+   "n": 216,
+   "exact_literal": 216,
+   "prefix_agreement": 216,
+   "strict_partial_prefix": 0,
+   "semantic_value": 216,
+   "early_eos": 200,
+   "decode_median_ms": 168.46316657029092
+  },
+  {
+   "budget": 4,
+   "kind": "temporal",
+   "n": 216,
+   "exact_literal": 79,
+   "prefix_agreement": 79,
+   "strict_partial_prefix": 0,
+   "semantic_value": 99,
+   "early_eos": 99,
+   "decode_median_ms": 251.0487490799278
+  },
+  {
+   "budget": 6,
+   "kind": "action",
+   "n": 216,
+   "exact_literal": 0,
+   "prefix_agreement": 0,
+   "strict_partial_prefix": 0,
+   "semantic_value": 1,
+   "early_eos": 105,
+   "decode_median_ms": 416.74825828522444
+  },
+  {
+   "budget": 6,
+   "kind": "actor",
+   "n": 216,
+   "exact_literal": 199,
+   "prefix_agreement": 199,
+   "strict_partial_prefix": 0,
+   "semantic_value": 199,
+   "early_eos": 212,
+   "decode_median_ms": 169.61972042918205
+  },
+  {
+   "budget": 6,
+   "kind": "all",
+   "n": 1512,
+   "exact_literal": 818,
+   "prefix_agreement": 818,
+   "strict_partial_prefix": 0,
+   "semantic_value": 1017,
+   "early_eos": 1372,
+   "decode_median_ms": 170.86345492862165
+  },
+  {
+   "budget": 6,
+   "kind": "location",
+   "n": 216,
+   "exact_literal": 151,
+   "prefix_agreement": 151,
+   "strict_partial_prefix": 0,
+   "semantic_value": 206,
+   "early_eos": 216,
+   "decode_median_ms": 173.5433356370777
+  },
+  {
+   "budget": 6,
+   "kind": "object",
+   "n": 216,
+   "exact_literal": 3,
+   "prefix_agreement": 3,
+   "strict_partial_prefix": 0,
+   "semantic_value": 126,
+   "early_eos": 199,
+   "decode_median_ms": 170.2587364707142
+  },
+  {
+   "budget": 6,
+   "kind": "possessive",
+   "n": 216,
+   "exact_literal": 170,
+   "prefix_agreement": 170,
+   "strict_partial_prefix": 0,
+   "semantic_value": 170,
+   "early_eos": 216,
+   "decode_median_ms": 169.1967777442187
+  },
+  {
+   "budget": 6,
+   "kind": "reported_source",
+   "n": 216,
+   "exact_literal": 216,
+   "prefix_agreement": 216,
+   "strict_partial_prefix": 0,
+   "semantic_value": 216,
+   "early_eos": 216,
+   "decode_median_ms": 168.46316657029092
+  },
+  {
+   "budget": 6,
+   "kind": "temporal",
+   "n": 216,
+   "exact_literal": 79,
+   "prefix_agreement": 79,
+   "strict_partial_prefix": 0,
+   "semantic_value": 99,
+   "early_eos": 208,
+   "decode_median_ms": 251.18192727677524
+  }
+ ],
+ "step_timing": {
+  "1": {
+   "n": 1512,
+   "median_ms": 85.29954846017063,
+   "p95_ms": 87.66988145653158
+  },
+  "2": {
+   "n": 1512,
+   "median_ms": 85.31707688234746,
+   "p95_ms": 88.7747646542266
+  },
+  "3": {
+   "n": 1186,
+   "median_ms": 84.37673537991941,
+   "p95_ms": 87.87849312648177
+  },
+  "4": {
+   "n": 592,
+   "median_ms": 84.163784282282,
+   "p95_ms": 87.5986616127193
+  },
+  "5": {
+   "n": 329,
+   "median_ms": 83.93579302355647,
+   "p95_ms": 87.34474489465354
+  },
+  "6": {
+   "n": 140,
+   "median_ms": 83.73244688846171,
+   "p95_ms": 87.23024595528841
+  }
+ },
+ "requests": 1512,
+ "prefill_native_parity": "all 1512 exact token IDs",
+ "total_request_median_ms": 257.2424975223839,
+ "protocol_sha256": "4b2b0e87e015b2d813d45bbb6c4c52df9de9e9a0a1581dc8fa38c3348490804a",
+ "journal_sha256": "94729cd1bacd03dd5c8822d9f13520689664a1ebc8ba9ef2c7526d468329bedc"
+}

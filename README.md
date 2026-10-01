@@ -213,6 +213,10 @@ Dated plan and help-wanted files: [ROADMAP.md](https://github.com/nokia-applied-
 
 <sub>Also: at most 26 options in the letter readout (a span readout is on the roadmap, not in the code); coverage at 5% risk is a high-variance estimate at n = 300; the headline tables are Qwen models; every decision here is scored in isolation, not inside an agent loop.</sub>
 
+## Experimental native value decoding
+
+A standalone, opt-in [fixed-budget benchmark](docs/native_values_reproduction.md) studies native vocabulary responses and 1–6-token cached continuations on frozen synthetic fixtures. [Measured results](docs/results_cached_decode.md), raw replies and independent replay are included. It does not change decision mode, the public API or shipped heads.
+
 ## 🤝 Contributing and citation
 
 Backends and bench providers are one file each; several are **help wanted** ([ROADMAP.md](https://github.com/nokia-applied-research/AnyJev/blob/main/ROADMAP.md), [CONTRIBUTING.md](https://github.com/nokia-applied-research/AnyJev/blob/main/CONTRIBUTING.md)). Changes: [CHANGELOG.md](https://github.com/nokia-applied-research/AnyJev/blob/main/CHANGELOG.md). Credits: [CREDITS.md](https://github.com/nokia-applied-research/AnyJev/blob/main/CREDITS.md).

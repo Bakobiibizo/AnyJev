@@ -29,4 +29,8 @@ echo "# depth, Jev mode, latency, shipped heads"
 ${PYTHON:-python3} -m bench.exit_table --date "$(basename "$(latest bench/results_exit)")" > docs/results_exit.md
 echo "# when L0 helps"
 ${PYTHON:-python3} -m bench.diag_l0 bench/results_typed_diag bench/results_batchprior_v0 bench/results_small > docs/diag_l0_output.txt   # the input set docs/when_l0_helps.md names
+if [[ -f bench/results_cached_decode/2026-10-01/run01/validation.json ]]; then
+  echo "# experimental native cached decode fixed budgets"
+  ${PYTHON:-python3} -m bench.cached_decode_table > docs/results_cached_decode.md
+fi
 echo "done; README tables: paste the readme_table and models_table outputs into README.md / README.zh-CN.md"

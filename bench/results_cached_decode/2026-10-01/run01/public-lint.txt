@@ -1,0 +1,25 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> bench/cached_decode.py:6:1
+   |
+ 4 |   Budgets cap native predictions including EOS; larger budgets retain an early-EOS reply.
+ 5 |   """
+ 6 | / import argparse
+ 7 | | import json
+ 8 | | import time
+ 9 | | from collections import defaultdict
+10 | | from pathlib import Path
+11 | |
+12 | | import numpy as np
+13 | |
+14 | | from anyjev.backends.hf import HFBackend
+15 | | from bench.run import environment
+16 | | from bench.tasks.native_values import MODEL, PANEL, REVISION, SYNONYMS
+17 | | from bench.value_io import digest, read_rows, save
+   | |__________________________________________________^
+18 |   BUDGETS = (1, 2, 3, 4, 6)
+19 |   LIMIT = 1800
+   |
+help: Organize imports
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.

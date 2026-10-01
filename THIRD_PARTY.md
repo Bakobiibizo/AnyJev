@@ -14,6 +14,12 @@
 Datasets are downloaded at run time, never vendored. `bench/tasks/typed_paraphrases.json` (the rewordings used
 by `bench.paraphrase_study` and the demo) was written here and carries the repo license.
 
+## Native value-decoding benchmark
+
+- `bench/tasks/native_values.jsonl.gz` is an original synthetic fixture under this repository's Apache-2.0 license; it contains authored sentences, literal targets and declared verb aliases. No external dataset or teacher labels.
+- Frozen checkpoint: `Qwen/Qwen2.5-7B-Instruct`, revision `a09a35458c702b33eeacc393d103063234e8bc28`, Apache-2.0. License checked at https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/a09a35458c702b33eeacc393d103063234e8bc28/LICENSE . Weights are not vendored.
+- Optional direct GPU placement uses Hugging Face Accelerate (Apache-2.0; installed version and license inspected). Install it alongside the existing `hf` extra for this benchmark. No core dependency or backend behavior is changed.
+
 # Methods implemented
 
 - Contextual calibration: Zhao et al., ICML 2021, arXiv:2102.09690

@@ -1,0 +1,7 @@
+{
+ "origin": "Operator explicitly approved fixed normalization and 1/2/3/4/6 cached decoding budgets",
+ "protocol_sha256": "4b2b0e87e015b2d813d45bbb6c4c52df9de9e9a0a1581dc8fa38c3348490804a",
+ "targets_sha256": "6b14a947d2ba4fe9d4bf35cc80bf49709aea549469d92dc28c8ace3c3ade5b85",
+ "inference_started": false,
+ "engine_preflight": "4 analytical/random-cache tests passed; no checkpoint capability measurement yet"
+}

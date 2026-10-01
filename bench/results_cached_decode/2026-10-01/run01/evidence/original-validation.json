@@ -1,0 +1,11 @@
+{
+ "status": "pass",
+ "requests": 1512,
+ "budget_observations": 7560,
+ "prefill_native_parity": "1512/1512 exact recorded token IDs",
+ "scope": "Token/score/cache-length/EOS/timing replay; random-model greedy parity tested separately",
+ "old_attention_gate": "Remains failed; no attention used here",
+ "audit_code_sha256": "e6d52dd036b264390ca38441643d341fb6bdd86b3ecc039b15d7e49d6f0c0d30",
+ "results_sha256": "da063a90a7b0a8a89b8caa670cbf6736af33f1a44af6893e977d5be1474dab47",
+ "journal_sha256": "94729cd1bacd03dd5c8822d9f13520689664a1ebc8ba9ef2c7526d468329bedc"
+}

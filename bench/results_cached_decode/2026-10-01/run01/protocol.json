@@ -1,0 +1,67 @@
+{
+ "origin": "Native cached decode panel and fixed normalization",
+ "source": "bench/tasks/native_values.jsonl.gz",
+ "source_hashes": {
+  "bench/tasks/native_values.jsonl.gz": "bcafe9117f6f4891a659e1f1a149c0c36e94e43f379fab416b74f871c906fded"
+ },
+ "code_hashes": {
+  "bench/cached_decode.py": "929642f63a2146e5e0341b32e7b8971ef0e92367d87f744cad215092b0097264",
+  "tests/test_cached_decode.py": "7d20d54ae31c78bb2821b76cca9ab1a26bf3488dbcda722183f3dc240477be20",
+  "bench/tasks/native_values.py": "ac0d524f415a11ebaf1a215407d939eb8f7e4365004ea67176c1bf9e76a1f836",
+  "anyjev/backends/hf.py": "e6f4310e8e754bf78da8735aefa84c3d3f8cc91355ac22b97bd5c67555715f9d",
+  "bench/value_io.py": "7d22f13368e96f28e1073b7b52056534522155cdb78c878d06f9a3536bf38372",
+  "bench/run.py": "88c558c0570fb0233ae40cf2b1469b01e5d87f8b2d426aa86c66d42dad750e1c"
+ },
+ "targets_sha256": "3051d997ecfce2007b233e326ad9efe286515621c2006cef80884b72a2854dd7",
+ "model": "Qwen/Qwen2.5-7B-Instruct",
+ "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+ "depth": 28,
+ "requests": 1512,
+ "budgets": [
+  1,
+  2,
+  3,
+  4,
+  6
+ ],
+ "process_limit_seconds": 1800,
+ "sampling": false,
+ "new_fitted_parameters": 0,
+ "batch_size": 1,
+ "dtype": "bfloat16",
+ "cache": true,
+ "output_budget": "Predicted native tokens including EOS if emitted; stop early on native EOS only",
+ "exact_literal": "Decoded reply excluding special EOS, otherwise unmodified, equals canonical gold",
+ "prefix_agreement": "Nonempty literal reply is a character prefix of canonical gold, including exact",
+ "strict_partial_prefix": "Prefix agreement excluding exact",
+ "semantic_value": "Whole reply equals a presealed complete authored value after casefold and one optional leading a/an/the",
+ "synonyms": {
+  "restarted": "rebooted",
+  "inspected": "examined",
+  "repaired": "fixed",
+  "replaced": "substituted",
+  "moved": "relocated",
+  "copied": "duplicated",
+  "stopped": "halted",
+  "started": "launched",
+  "deployed": "rolled out",
+  "updated": "revised",
+  "archived": "filed away",
+  "restored": "recovered"
+ },
+ "synonym_scope": "Only action values with explicitly declared corpus aliases",
+ "forbidden": [
+  "whitespace stripping",
+  "punctuation stripping",
+  "extra-word removal",
+  "new equivalences",
+  "model judge",
+  "learned head",
+  "generation beyond budget or EOS"
+ ],
+ "timing_scope": "CUDA synchronized forward plus argmax/ID transfer; input tensor setup and text/scoring separate",
+ "license": "Repo-authored Apache-2.0 panel and cached Apache-2.0 checkpoint; no weights vendored",
+ "scope": "Native vocabulary projection and cached decoding only; no attention-based measurement",
+ "publication_note": "Public portability manifest, not a new preregistration. Original fixed scoring and measured replies/timings are unchanged.",
+ "original_protocol_sha256": "4b2b0e87e015b2d813d45bbb6c4c52df9de9e9a0a1581dc8fa38c3348490804a"
+}

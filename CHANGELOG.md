@@ -1,5 +1,9 @@
 # Changelog
 
+## Experimental native value decoding (unreleased)
+
+- Added a standalone frozen-model value-extraction benchmark with fixed 1/2/3/4/6-token cached decode budgets, sealed normalization, per-step latency, measured artifacts and independent replay. No public decision API or shipped heads changed.
+
 ## 0.2.0 (2026-09-28)
 
 - **New, opt-in: L0 can read as many option rotations as the decision needs instead of K, with the

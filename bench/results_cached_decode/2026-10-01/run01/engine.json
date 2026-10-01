@@ -1,0 +1,20 @@
+{
+ "devices": [
+  "cuda:0"
+ ],
+ "load_ms": 141971.88030509278,
+ "environment": {
+  "python": "3.14.2",
+  "date": "2026-10-01T12:50:15.022445",
+  "anyjev": "0.2.0",
+  "phase": "native-cached-budgets",
+  "dtype": "bfloat16",
+  "batch_size": 1,
+  "git_commit": "3b67266",
+  "torch": "2.13.0+cu130",
+  "transformers": "5.13.1",
+  "gpu": "NVIDIA GB10",
+  "nvidia_smi": "NVIDIA GB10, 580.159.03"
+ },
+ "trainable_parameters": 0
+}

@@ -1,0 +1,18 @@
+{
+ "origin": "Portable public export of measured native cached decoding",
+ "original_results_sha256": "da063a90a7b0a8a89b8caa670cbf6736af33f1a44af6893e977d5be1474dab47",
+ "original_journal_sha256": "94729cd1bacd03dd5c8822d9f13520689664a1ebc8ba9ef2c7526d468329bedc",
+ "public_journal_sha256": "94729cd1bacd03dd5c8822d9f13520689664a1ebc8ba9ef2c7526d468329bedc",
+ "original_targets_sha256": "6b14a947d2ba4fe9d4bf35cc80bf49709aea549469d92dc28c8ace3c3ade5b85",
+ "public_targets_sha256": "3051d997ecfce2007b233e326ad9efe286515621c2006cef80884b72a2854dd7",
+ "original_protocol_sha256": "4b2b0e87e015b2d813d45bbb6c4c52df9de9e9a0a1581dc8fa38c3348490804a",
+ "public_protocol_sha256": "4c4543ba8f3249c9a31a2bd9cda602638bd46c88542f3d2ce9d34dee3fcba38d",
+ "changes": [
+  "Source grouping field renamed to source_id",
+  "Dependency imports isolated to native-value fixture",
+  "Publication/source hashes regenerated without changing scoring rules",
+  "Contextual documentation and host-specific launch/recovery pointers excluded"
+ ],
+ "numerical_results_changed": false,
+ "replies_and_timings_changed": false
+}

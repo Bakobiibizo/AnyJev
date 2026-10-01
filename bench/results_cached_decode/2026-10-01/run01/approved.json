@@ -1,0 +1,8 @@
+{
+ "origin": "Public export of the presealed fixed-budget native decoding experiment",
+ "protocol_sha256": "4c4543ba8f3249c9a31a2bd9cda602638bd46c88542f3d2ce9d34dee3fcba38d",
+ "targets_sha256": "3051d997ecfce2007b233e326ad9efe286515621c2006cef80884b72a2854dd7",
+ "original_protocol_sha256": "4b2b0e87e015b2d813d45bbb6c4c52df9de9e9a0a1581dc8fa38c3348490804a",
+ "normalization_unchanged": true,
+ "publication_manifest_created_after_measurement": true
+}
