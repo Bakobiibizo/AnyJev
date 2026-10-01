@@ -42,17 +42,19 @@ Every column uses the same 1,512 requests.
 | 4 | 818 (54.10%) | 818 (54.10%) | 1017 (67.26%) |
 | 6 | 818 (54.10%) | 818 (54.10%) | 1017 (67.26%) |
 
-On this batch-one NVIDIA GB10 path, median prefill was **85.30 ms**. Actual cached-step
-medians were **85.32, 84.38, 84.16, 83.94 and 83.73 ms**, conditional on reaching each
-step. Cached steps were therefore not appreciably cheaper than prefill on this hardware.
-These are synchronized forward-plus-argmax timings, not inferred optimized latencies.
-Model loading is excluded and recorded separately.
+Results vary strongly by role: at the four-token cap, complete normalized-value recovery
+is 216/216 for reported source, 206/216 for location and 199/216 for actor, but only
+1/216 for action under the sealed strict metric.
 
-The useful observation is that single-token full-span accuracy understates value
-information: a few native tokens substantially improve complete-value recovery without
-a learned head. The limitation is equally important: four/six tokens plateau well below
-universal recovery, and extra text can reduce endpoint success. We did not choose an
-adaptive stopping point or expand equivalences after seeing outputs.
+The experiment directly establishes that additional native greedy tokens improve
+complete-value recovery under the sealed scoring rule on this panel. The limitation is
+equally important: four/six tokens plateau well below universal recovery, and extra text
+can reduce endpoint success. We did not choose an adaptive stopping point or expand
+equivalences after seeing outputs.
+
+On the measured GB10 batch-one path, incremental cached steps were approximately
+84–85 ms, essentially the same cost as prefill; we make no latency advantage claim.
+Detailed timings and conditional step counts are retained in the results.
 
 ## Caveats and evidence
 
